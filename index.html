@@ -1,0 +1,3921 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FileShare · Claymorphism + Apple TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif;
+    --bg: #f5f5f7;
+    --bg-elev: #ffffff;
+    --bg-sunk: #ebebef;
+    --glass: rgba(251, 251, 253, 0.72);
+    --text: #1d1d1f;
+    --text-2: #6e6e73;
+    --text-3: #86868b;
+    --line: rgba(0, 0, 0, 0.08);
+    --line-2: rgba(0, 0, 0, 0.14);
+    --accent: #0071e3;
+    --accent-hover: #0077ed;
+    --accent-soft: rgba(0, 113, 227, 0.1);
+    --ok: #1d9d4f;
+    --ok-soft: rgba(29, 157, 79, 0.12);
+    --warn: #c76a00;
+    --warn-soft: rgba(255, 159, 10, 0.14);
+    --danger: #d70015;
+    --danger-soft: rgba(255, 59, 48, 0.1);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+    --shadow-md: 0 4px 14px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.06);
+    --shadow-lg: 0 24px 80px rgba(0,0,0,.18);
+    --r-sm: 10px; --r-md: 16px; --r-lg: 22px; --r-xl: 28px;
+    --ease: cubic-bezier(.22, 1, .36, 1);
+    --spring: cubic-bezier(.34, 1.4, .64, 1);
+    --nav-h: 64px;
+    --header-logo-size: 32px;
+    --header-title-size: 18px;
+    --intro-logo-size: 120px;
+    --intro-text-size: 16px;
+    --intro-appname-size: 48px;
+  }
+  [data-theme="dark"] {
+    --bg: #000000; --bg-elev: #1c1c1e; --bg-sunk: #2c2c2e;
+    --glass: rgba(22, 22, 23, 0.72);
+    --text: #f5f5f7; --text-2: #a1a1a6; --text-3: #86868b;
+    --line: rgba(255, 255, 255, 0.09); --line-2: rgba(255, 255, 255, 0.16);
+    /* --accent NO se sobrescribe: usa el color configurado también en oscuro */
+    --ok: #30d158; --ok-soft: rgba(48, 209, 88, 0.14);
+    --warn: #ff9f0a; --danger: #ff453a; --danger-soft: rgba(255, 69, 58, 0.14);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-md: 0 8px 30px rgba(0,0,0,.5);
+    --shadow-lg: 0 30px 90px rgba(0,0,0,.7);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font); background: var(--bg); color: var(--text);
+    font-size: 15px; line-height: 1.47; letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased; min-height: 100dvh;
+    transition: background .4s var(--ease), color .4s var(--ease);
+    overflow-x: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+  button { cursor: pointer; background: none; border: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  :focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; border-radius: 8px; }
+  .hidden { display: none !important; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 38px; padding: 0 18px; border-radius: 980px;
+    font-size: 14px; font-weight: 500; white-space: nowrap;
+    transition: transform .2s var(--ease), background .2s, box-shadow .2s, opacity .2s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: var(--bg-sunk); color: var(--text); }
+  .btn-secondary:hover { background: var(--line-2); }
+  .btn-danger { background: var(--danger-soft); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-sm { height: 30px; padding: 0 12px; font-size: 13px; }
+  .btn[disabled] { opacity: .4; pointer-events: none; }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: inline-grid; place-items: center; color: var(--text-2);
+    transition: background .2s, color .2s, transform .2s var(--ease);
+  }
+  .icon-btn:hover { background: var(--bg-sunk); color: var(--text); }
+  .icon-btn:active { transform: scale(.92); }
+
+  /* Overlay de la Intro */
+  #introOverlay { position: fixed; inset: 0; z-index: 99999; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 1; visibility: visible; transition: opacity .6s, visibility .6s; pointer-events: auto; }
+  #introOverlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  #introOverlay.off { display: none !important; }
+  #introOverlay.pre-hidden { display: none !important; }
+  
+  .intro-content { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: opacity .4s; }
+  .intro-logo {
+    width: var(--intro-logo-size); height: auto; max-height: 40vh; object-fit: contain;
+    display: block; margin: 0 auto;
+    filter: drop-shadow(0 25px 60px rgba(0,113,227,.35));
+  }
+  .intro-text {
+    margin-top: 24px; color: #fff; letter-spacing: .28em; font-size: var(--intro-text-size);
+    text-transform: uppercase; opacity: 0; animation: introFadeUp 1s .6s forwards;
+  }
+  .intro-appname {
+    font-size: var(--intro-appname-size); font-weight: 700; color: #fff; letter-spacing: -.03em;
+    opacity: 0; transform: translateY(10px);
+  }
+  .intro-appname.visible { animation: introNameFade 1s forwards; }
+
+  @keyframes introSpin3d {
+    0% { transform: rotateY(0deg) scale(.5); opacity: 0; }
+    20% { opacity: 1; }
+    50% { transform: rotateY(360deg) scale(1); }
+    80% { transform: rotateY(720deg) scale(1.05); }
+    100% { transform: rotateY(1080deg) scale(1); }
+  }
+  .intro-logo.animate { animation: introSpin3d 3s cubic-bezier(.25,.1,.25,1) forwards; }
+
+  @keyframes introFadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes introNameFade { 0% { opacity: 0; transform: scale(.9) translateY(10px); } 100% { opacity: 1; transform: none; } }
+
+  .app-shell { display: flex; flex-direction: column; min-height: 100dvh; }
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--glass);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 1400px; margin: 0 auto;
+    min-height: var(--nav-h);
+    display: flex; align-items: center; gap: 16px; padding: 10px 24px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; color: var(--text); line-height: 1.15; background: transparent; border: 0; cursor: pointer; padding: 0; }
+  .brand .logo-img { width: var(--header-logo-size) !important; height: var(--header-logo-size) !important; object-fit: contain; flex-shrink: 0; border-radius: 8px; }
+  .brand .brand-text { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-width: 0; text-align: left; }
+  .brand .brand-title { display: block; font-weight: 600; font-size: var(--header-title-size) !important; color: var(--text); letter-spacing: -0.03em; line-height: 1.15; }
+  .nav-spacer { flex: 1; }
+  .user-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 30px; background: var(--bg-sunk); font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .user-badge.admin { background: var(--accent-soft); color: var(--accent); }
+  .user-badge .avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, #5e5ce6, #bf5af2); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+
+  .stage { flex: 1; max-width: 1400px; width: 100%; margin: 0 auto; padding: 0 24px 60px; }
+
+  .carousel-section {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; perspective: 1200px;
+    padding: max(56px, calc(var(--nav-h) * 0.4)) 60px max(56px, 48px);
+    margin-top: 8px;
+    min-height: calc(100dvh - var(--nav-h) - 16px);
+    box-sizing: border-box;
+    gap: 18px;
+  }
+  .carousel-3d {
+    position: relative; width: 100%;
+    height: min(400px, calc(100dvh - var(--nav-h) - 200px));
+    min-height: 260px;
+    display: flex; justify-content: center; align-items: center;
+    transform-style: preserve-3d;
+    flex-shrink: 0;
+  }
+  .profile-card-3d {
+    position: absolute;
+    width: min(300px, 70vw);
+    height: min(360px, calc(100dvh - var(--nav-h) - 220px), 52vh);
+    min-height: 240px;
+    max-height: 100%;
+    border-radius: var(--r-xl); cursor: pointer;
+    transition: all .5s cubic-bezier(.4,0,.2,1);
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 22px 20px 18px;
+    background: var(--bg-elev); box-shadow: var(--shadow-md); border: 1px solid var(--line);
+    overflow: hidden; /* todo el contenido dentro */
+    box-sizing: border-box;
+  }
+  .profile-card-3d.active-card { box-shadow: 0 0 0 3px var(--accent), var(--shadow-lg); border-color: var(--accent); transform: scale(1.03); }
+  .card-icon {
+    width: 88px; height: 88px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px; flex-shrink: 0; transition: transform .4s;
+    overflow: hidden; /* icono siempre dentro del círculo */
+  }
+  .profile-card-3d.active-card .card-icon { transform: scale(1.05); }
+  .card-icon i {
+    font-size: 2.35rem; line-height: 1; width: 1em; height: 1em;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; text-shadow: 0 4px 12px rgba(0,0,0,.3);
+  }
+  .card-title {
+    font-size: clamp(1.15rem, 3.5vw, 1.5rem); font-weight: 600; letter-spacing: -.5px;
+    color: var(--text); margin-bottom: 6px; flex-shrink: 0;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-desc {
+    font-size: clamp(.75rem, 2vw, .85rem); color: var(--text-2); line-height: 1.4;
+    margin-bottom: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  }
+  .card-badge {
+    display: inline-block; padding: 6px 14px; border-radius: 40px;
+    font-size: .68rem; font-weight: 600; letter-spacing: .3px; text-transform: uppercase;
+    margin-top: auto; flex-shrink: 0; max-width: 100%;
+  }
+  .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .25s; z-index: 20; font-size: 1.3rem; background: var(--bg-elev); border: 1px solid var(--line); color: var(--accent); box-shadow: var(--shadow-sm); }
+  .nav-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); transform: translateY(-50%) scale(1.1); }
+  .nav-btn:active { transform: translateY(-50%) scale(.96); }
+  .nav-left { left: 0; } .nav-right { right: 0; }
+  .carousel-dots {
+    display: flex; justify-content: center; align-items: center; gap: 10px;
+    margin-top: 28px; /* separado de las tarjetas para no encimarse */
+    padding: 8px 0 4px;
+    height: auto; min-height: 20px; flex-shrink: 0; z-index: 5;
+    position: relative;
+  }
+  .carousel-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--line-2); cursor: pointer; transition: all .3s;
+    flex-shrink: 0;
+  }
+  .carousel-dot.active {
+    background: var(--accent); width: 28px; border-radius: 6px;
+  }
+
+  .view-section { display: none; flex-direction: column; padding: 24px 0; }
+  .view-section.active { display: flex; }
+  .page-title { margin: 10px 0 20px; }
+  .page-title h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; letter-spacing: -.03em; color: var(--text); }
+  .page-title p { color: var(--text-2); font-size: 16px; margin-top: 4px; }
+
+  .tv-group { margin-bottom: 32px; }
+  .tv-group-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 0 4px; }
+  .tv-group-header h3 { font-size: 20px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .tv-group-header .count { font-size: 14px; color: var(--text-3); font-weight: 400; margin-left: 4px; }
+
+  .tv-row-scroll {
+    display: flex; gap: 16px; padding: 6px 4px 20px;
+    overflow-x: auto; scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    cursor: grab;
+  }
+  .tv-row-scroll.dragging { cursor: grabbing; scroll-behavior: auto; }
+  .tv-row-scroll::-webkit-scrollbar { display: none; }
+
+  .tv-card {
+    flex: 0 0 auto; width: 260px; height: 150px; border-radius: var(--r-lg); position: relative; overflow: hidden; cursor: pointer;
+    transition: transform .3s var(--ease), box-shadow .3s;
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);
+    display: flex; flex-direction: column; justify-content: flex-end; padding: 18px; color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,.4); user-select: none;
+  }
+  .tv-card:hover { transform: scale(1.04); box-shadow: var(--shadow-md); z-index: 2; }
+  .tv-card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,.75) 100%); pointer-events: none; }
+  .tv-card > * { position: relative; z-index: 1; }
+  .tv-card .card-name { font-size: 1.1rem; font-weight: 700; letter-spacing: -.3px; line-height: 1.25; margin-bottom: 6px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .tv-card .card-meta { font-size: .78rem; font-weight: 500; opacity: .92; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .tv-card .badge-type { position: absolute; top: 14px; left: 14px; z-index: 2; padding: 5px 12px; border-radius: 30px; font-size: .65rem; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.25); }
+  .tv-card .badge-expiry { position: absolute; top: 14px; right: 14px; z-index: 2; padding: 5px 10px; border-radius: 30px; font-size: .65rem; font-weight: 700; background: rgba(255,159,10,.85); color: #000; backdrop-filter: blur(8px); }
+  .tv-card .badge-expiry.urgent { background: rgba(255,69,58,.9); color: #fff; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .6; } }
+
+  .doc-card {
+    flex: 0 0 auto; width: 200px; height: 220px; border-radius: var(--r-md);
+    position: relative; overflow: hidden; cursor: pointer; user-select: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 20px 12px 14px; gap: 10px;
+    background: var(--bg-elev);
+    box-shadow: var(--shadow-sm); border: 1px solid var(--line);
+    transition: transform .3s var(--ease), box-shadow .3s, background .2s, border-color .2s;
+  }
+  .doc-card:hover { transform: translateY(-6px) scale(1.02); box-shadow: var(--shadow-md); }
+  /* Fondos sutiles por tipo de documento */
+  .doc-card.tint-pdf, .doc-grid-item.tint-pdf { background: rgba(229,57,53,.08); border-color: rgba(229,57,53,.22); }
+  .doc-card.tint-word, .doc-grid-item.tint-word { background: rgba(43,87,154,.09); border-color: rgba(43,87,154,.25); }
+  .doc-card.tint-excel, .doc-grid-item.tint-excel { background: rgba(33,115,70,.09); border-color: rgba(33,115,70,.25); }
+  .doc-card.tint-ppt, .doc-grid-item.tint-ppt { background: rgba(210,71,38,.09); border-color: rgba(210,71,38,.25); }
+  .doc-card.tint-img, .doc-grid-item.tint-img { background: rgba(142,68,173,.09); border-color: rgba(142,68,173,.25); }
+  .doc-card.tint-zip, .doc-grid-item.tint-zip { background: rgba(243,156,18,.1); border-color: rgba(243,156,18,.28); }
+  .doc-card.tint-other, .doc-grid-item.tint-other { background: rgba(110,110,115,.08); border-color: rgba(110,110,115,.22); }
+  [data-theme="dark"] .doc-card.tint-pdf, [data-theme="dark"] .doc-grid-item.tint-pdf { background: rgba(229,57,53,.16); }
+  [data-theme="dark"] .doc-card.tint-word, [data-theme="dark"] .doc-grid-item.tint-word { background: rgba(43,87,154,.18); }
+  [data-theme="dark"] .doc-card.tint-excel, [data-theme="dark"] .doc-grid-item.tint-excel { background: rgba(33,115,70,.18); }
+  [data-theme="dark"] .doc-card.tint-ppt, [data-theme="dark"] .doc-grid-item.tint-ppt { background: rgba(210,71,38,.18); }
+  [data-theme="dark"] .doc-card.tint-img, [data-theme="dark"] .doc-grid-item.tint-img { background: rgba(142,68,173,.18); }
+  [data-theme="dark"] .doc-card.tint-zip, [data-theme="dark"] .doc-grid-item.tint-zip { background: rgba(243,156,18,.16); }
+  [data-theme="dark"] .doc-card.tint-other, [data-theme="dark"] .doc-grid-item.tint-other { background: rgba(110,110,115,.14); }
+
+  .tv-group-header.hdr-pdf h3 { color: #c62828; }
+  .tv-group-header.hdr-word h3 { color: #2b579a; }
+  .tv-group-header.hdr-excel h3 { color: #217346; }
+  .tv-group-header.hdr-ppt h3 { color: #d24726; }
+  .tv-group-header.hdr-img h3 { color: #8e44ad; }
+  .tv-group-header.hdr-zip h3 { color: #c27c0e; }
+  [data-theme="dark"] .tv-group-header.hdr-pdf h3 { color: #ef9a9a; }
+  [data-theme="dark"] .tv-group-header.hdr-word h3 { color: #90caf9; }
+  [data-theme="dark"] .tv-group-header.hdr-excel h3 { color: #81c784; }
+  [data-theme="dark"] .tv-group-header.hdr-ppt h3 { color: #ffab91; }
+  [data-theme="dark"] .tv-group-header.hdr-img h3 { color: #ce93d8; }
+  [data-theme="dark"] .tv-group-header.hdr-zip h3 { color: #ffd54f; }
+  .doc-card .doc-icon {
+    width: 110px; height: 110px; border-radius: 22px;
+    display: grid; place-items: center; flex-shrink: 0;
+    color: #fff; font-size: 1.25rem; font-weight: 800; letter-spacing: .6px;
+    box-shadow: 0 8px 20px rgba(0,0,0,.22), inset 0 -4px 0 rgba(0,0,0,.18);
+    transition: transform .3s var(--ease);
+  }
+  .doc-card:hover .doc-icon { transform: scale(1.04); }
+  .doc-card .doc-name {
+    font-size: .88rem; font-weight: 600; line-height: 1.3; text-align: center;
+    color: var(--text); overflow: hidden; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;
+    width: 100%;
+  }
+  .doc-card .doc-size { font-size: .72rem; color: var(--text-3); font-weight: 500; margin-top: auto; }
+  .doc-card .doc-dl {
+    position: absolute; top: 10px; right: 10px; z-index: 3;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: .75rem;
+    display: grid; place-items: center; opacity: 0; transition: opacity .2s;
+  }
+  .doc-card:hover .doc-dl { opacity: 1; }
+
+  .ftype-pdf   { background: linear-gradient(145deg, #e53935, #b71c1c); }
+  .ftype-word  { background: linear-gradient(145deg, #2b579a, #1e3f73); }
+  .ftype-excel { background: linear-gradient(145deg, #217346, #16512f); }
+  .ftype-ppt   { background: linear-gradient(145deg, #d24726, #9c3419); }
+  .ftype-img   { background: linear-gradient(145deg, #8e44ad, #5e2d7a); }
+  .ftype-zip   { background: linear-gradient(145deg, #f39c12, #b9770e); }
+  .ftype-other { background: linear-gradient(145deg, #6e6e73, #48484a); }
+
+  .tv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; padding: 6px 4px 20px; }
+  .tv-list { display: flex; flex-direction: column; gap: 8px; padding: 6px 4px 20px; }
+
+  .doc-grid-item {
+    border-radius: var(--r-md); position: relative; overflow: hidden; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 20px 12px 14px; gap: 10px;
+    background: var(--bg-elev); box-shadow: var(--shadow-sm); border: 1px solid var(--line);
+    transition: transform .3s var(--ease), box-shadow .3s, background .2s;
+    min-height: 200px;
+  }
+  .doc-grid-item:hover { transform: translateY(-6px) scale(1.02); box-shadow: var(--shadow-md); background: var(--accent-soft); }
+  .doc-grid-item .doc-icon {
+    width: 110px; height: 110px; border-radius: 22px;
+    display: grid; place-items: center; flex-shrink: 0;
+    color: #fff; font-size: 1.25rem; font-weight: 800; letter-spacing: .6px;
+    box-shadow: 0 8px 20px rgba(0,0,0,.22), inset 0 -4px 0 rgba(0,0,0,.18);
+  }
+  .doc-grid-item .doc-name { font-size: .88rem; font-weight: 600; line-height: 1.3; text-align: center; color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; width: 100%; }
+  .doc-grid-item .doc-size { font-size: .72rem; color: var(--text-3); margin-top: auto; }
+
+  .doc-list-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-md); background: var(--bg-elev); cursor: pointer; transition: .2s; box-shadow: var(--shadow-sm); border: 1px solid var(--line); }
+  .doc-list-item:hover { background: var(--accent-soft); box-shadow: var(--shadow-md); }
+  .doc-list-item .doc-icon { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; color: #fff; font-size: .7rem; font-weight: 800; flex-shrink: 0; box-shadow: inset 0 -2px 0 rgba(0,0,0,.15); }
+  .doc-list-item .doc-info { flex: 1; min-width: 0; }
+  .doc-list-item .doc-name { font-size: .92rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .doc-list-item .doc-size { font-size: .75rem; color: var(--text-3); margin-top: 2px; }
+  .doc-list-item .doc-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .view-switcher { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg-sunk); border-radius: 980px; }
+  .view-switcher button { width: 32px; height: 32px; border-radius: 50%; border: none; background: transparent; color: var(--text-2); cursor: pointer; display: grid; place-items: center; font-size: .82rem; transition: .2s; }
+  .view-switcher button.active { background: var(--accent); color: #fff; box-shadow: 0 4px 10px -2px rgba(0,113,227,.5); }
+
+  .dropzone { border: 2px dashed var(--line-2); border-radius: var(--r-lg); padding: 36px 20px; text-align: center; color: var(--text-2); transition: all .35s var(--ease); background: var(--bg-elev); margin-bottom: 20px; cursor: pointer; }
+  .dropzone .dz-icon { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 12px; background: var(--accent-soft); color: var(--accent); transition: transform .5s var(--spring); }
+  .dropzone .dz-icon i { font-size: 26px; }
+  .dropzone strong { color: var(--text); font-weight: 600; display: block; font-size: 17px; }
+  .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.01); }
+  .dropzone.drag .dz-icon { transform: translateY(-6px) scale(1.1); }
+
+  .tab-bar { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg-sunk); border-radius: 980px; margin-bottom: 20px; }
+  .tab-btn { height: 34px; padding: 0 18px; border-radius: 980px; border: none; background: transparent; color: var(--text-2); font-size: 14px; font-weight: 500; display: inline-flex; gap: 8px; align-items: center; transition: all .25s var(--ease); cursor: pointer; }
+  .tab-btn.active { background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow-sm); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; z-index: 9999; opacity: 0; pointer-events: none; transition: opacity .3s; padding: 20px; }
+  .modal-overlay.active { opacity: 1; pointer-events: auto; }
+  .modal-content {
+    background: var(--bg-elev); border-radius: var(--r-xl); padding: 24px 28px;
+    width: 100%; max-width: 500px; max-height: 90vh; overflow: hidden;
+    box-shadow: var(--shadow-lg); display: flex; flex-direction: column; border: 1px solid var(--line);
+    animation: modalIn .4s var(--spring); text-align: left;
+  }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(30px) scale(.96); } }
+  .modal-content h2 { font-size: 20px; font-weight: 600; letter-spacing: -.02em; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .modal-content p { color: var(--text-2); font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
+  .modal-content::-webkit-scrollbar { width: 6px; }
+  .modal-content::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; }
+  .modal-body-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+  .modal-body-scroll::-webkit-scrollbar { width: 6px; }
+  .modal-body-scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; }
+  .modal-actions {
+    display: flex; gap: 12px; margin-top: 0; justify-content: flex-end; flex-wrap: wrap;
+    flex-shrink: 0; padding-top: 16px; margin-top: 12px;
+    border-top: 1px solid var(--line); background: var(--bg-elev);
+  }
+
+  .form-field { margin-bottom: 16px; position: relative; }
+  .form-field label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
+  .form-field input, .form-field select { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg-sunk); font-size: 15px; outline: 0; transition: .2s; color: var(--text); }
+  .form-field input:focus, .form-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); background: var(--bg-elev); }
+  .form-field input.invalid { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+  .form-row-3 { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 14px; }
+  .form-row-3 .form-field select { padding: 12px 10px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+  .input-status { position: absolute; right: 14px; bottom: 12px; font-size: 14px; display: none; }
+  .input-status.show { display: block; }
+
+  .settings-layout {
+    display: grid; grid-template-columns: 200px 1fr; gap: 20px;
+    min-height: 0; height: min(62vh, 560px); align-items: stretch;
+  }
+  .settings-nav {
+    display: flex; flex-direction: column; gap: 4px;
+    position: sticky; top: 0; align-self: start;
+    max-height: 100%; overflow: visible;
+  }
+  .settings-nav button { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; border: none; background: transparent; color: var(--text-2); font-size: 14px; font-weight: 500; cursor: pointer; text-align: left; transition: .2s; }
+  .settings-nav button:hover { background: var(--bg-sunk); color: var(--text); }
+  .settings-nav button.active { background: var(--bg-sunk); color: var(--text); font-weight: 600; }
+  .settings-panel-scroll {
+    min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden;
+    padding-right: 6px;
+  }
+  .settings-panel-scroll::-webkit-scrollbar { width: 6px; }
+  .settings-panel-scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; }
+  .settings-panel { display: flex; flex-direction: column; gap: 16px; }
+  .settings-section { background: var(--bg-sunk); border-radius: var(--r-lg); padding: 20px 24px; }
+  .settings-section h3 { font-size: 17px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); gap: 14px; }
+  .settings-row:first-of-type { border-top: none; padding-top: 0; }
+  .settings-row .label-group { flex: 1; min-width: 0; }
+  .settings-row .label-group strong { display: block; font-size: 14px; font-weight: 500; color: var(--text); }
+  .settings-row .label-group span { font-size: 12px; color: var(--text-3); display: block; margin-top: 2px; }
+  .settings-row .control { flex-shrink: 0; }
+  .settings-row .control input[type="text"], .settings-row .control input[type="password"], .settings-row .control input[type="number"], .settings-row .control select { padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-elev); font-size: 14px; outline: 0; transition: .2s; min-width: 180px; color: var(--text); }
+  .settings-row .control input[type="range"] { width: 160px; accent-color: var(--accent); }
+  .settings-row .control input[type="color"] { width: 44px; height: 32px; border: none; border-radius: 8px; cursor: pointer; background: none; padding: 0; }
+
+  .logo-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .logo-split-row:first-of-type { border-top: none; padding-top: 0; }
+  .logo-box { display: flex; align-items: center; gap: 12px; }
+  .logo-preview-box { width: 48px; height: 48px; border-radius: 10px; background: var(--bg-elev); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; flex-shrink: 0; }
+  .logo-preview-box img { width: 100%; height: 100%; object-fit: contain; }
+  .logo-preview-box i { color: var(--text-3); font-size: 1.2rem; }
+  .logo-controls { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .logo-controls .btn-row { display: flex; gap: 4px; }
+  .logo-controls .btn-row button { height: 26px; padding: 0 8px; font-size: 11px; }
+
+  .face-profiles-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; max-height: 180px; overflow-y: auto; }
+  .face-profile-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-elev); border-radius: 12px; }
+  .face-profile-row img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .face-profile-name { font-size: 13px; font-weight: 600; }
+  .face-reg-name-row { display: flex; gap: 8px; margin-top: 10px; }
+  .face-reg-name-row input { flex: 1; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-elev); font-size: 14px; outline: 0; }
+
+  .face-scan-overlay { display: none; position: fixed; inset: 0; z-index: 100050; background: rgba(4,8,14,.9); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); align-items: center; justify-content: center; flex-direction: column; padding: 20px; }
+  .face-scan-overlay.visible { display: flex; }
+  .face-scan-box { width: min(420px,94vw); background: var(--bg-elev); border: 1.5px solid var(--line-2); border-radius: 22px; box-shadow: var(--shadow-lg); overflow: hidden; text-align: center; }
+  .face-scan-header { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); }
+  .face-scan-title { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .face-scan-viewport { position: relative; width: 100%; aspect-ratio: 3/4; max-height: min(52vh,420px); background: #05080e; overflow: hidden; }
+  .face-scan-viewport video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  .face-scan-viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); pointer-events: none; }
+  .face-scan-frame {
+    position: absolute; left: 50%; top: 46%;
+    width: min(68%, 240px); aspect-ratio: 3/4;
+    transform: translate(-50%,-50%);
+    border-radius: 50% / 42%;
+    border: 3px solid var(--accent);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.12), 0 0 40px color-mix(in srgb, var(--accent) 45%, transparent);
+    pointer-events: none; transition: border-color .3s, box-shadow .3s;
+  }
+  .face-scan-status {
+    padding: 16px 18px 8px; font-size: 15px; font-weight: 600; color: var(--text);
+    min-height: 40px; line-height: 1.35; letter-spacing: -0.01em;
+  }
+  .face-scan-status.ok { color: var(--ok); }
+  .face-scan-status.deny { color: var(--danger); }
+  .face-scan-status.warn { color: var(--warn); }
+  .face-scan-frame.ok {
+    border-color: var(--ok);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.12), 0 0 40px rgba(48,209,88,.45);
+  }
+  .face-scan-frame.deny {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.12), 0 0 40px rgba(255,69,58,.45);
+  }
+  .face-scan-actions { display: flex; gap: 10px; justify-content: center; padding: 10px 16px 18px; flex-wrap: wrap; }
+
+  .toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 100000; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  .upload-progress-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100100;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .upload-progress-overlay.visible { display: flex; }
+  .upload-progress-box {
+    width: min(400px, 92vw); background: var(--bg-elev); border: 1px solid var(--line);
+    border-radius: var(--r-xl); padding: 28px 24px; box-shadow: var(--shadow-lg); text-align: center;
+  }
+  .upload-progress-box h4 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .upload-progress-box .up-sub { font-size: 13px; color: var(--text-2); margin-bottom: 18px; min-height: 1.3em; }
+  .upload-progress-track {
+    height: 10px; border-radius: 999px; background: var(--bg-sunk); overflow: hidden; border: 1px solid var(--line);
+  }
+  .upload-progress-bar {
+    height: 100%; width: 0%; border-radius: 999px; background: var(--accent);
+    transition: width .25s ease;
+  }
+  .upload-progress-pct { margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .upload-progress-box.done .upload-progress-bar { background: var(--ok); }
+  .upload-progress-box.done h4 { color: var(--ok); }
+  .toast { background: rgba(29,29,31,.95); color: #f5f5f7; padding: 12px 24px; border-radius: 999px; font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lg); backdrop-filter: blur(10px); animation: toastIn .3s var(--spring); display: flex; align-items: center; gap: 8px; }
+  [data-theme="dark"] .toast { background: rgba(245,245,247,.95); color: #1d1d1f; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(20px) scale(.9); } }
+
+  .switch { position: relative; display: inline-block; width: 44px; height: 26px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--line-2); transition: .4s; border-radius: 34px; }
+  .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 2px; bottom: 2px; background:#fff; transition:.4s; border-radius:50%; }
+  input:checked + .slider { background-color: var(--ok); }
+  input:checked + .slider:before { transform: translateX(18px); }
+
+  .edit-doc-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; max-height: 200px; overflow-y: auto; }
+  .edit-doc-item { display: flex; align-items: center; justify-content: space-between; background: var(--bg-sunk); padding: 8px 12px; border-radius: 10px; font-size: 13px; }
+  .edit-doc-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; margin-right: 10px; }
+
+  .doc-viewer-root { position: fixed; inset: 0; z-index: 100020; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.35); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .doc-viewer-root.active { display: flex; }
+  .doc-viewer-modal {
+    position: relative; width: 100%; max-width: 1180px; height: calc(100dvh - 40px);
+    background: var(--bg-elev); border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
+    display: flex; flex-direction: column; overflow: hidden; animation: modalIn .4s var(--spring);
+    border: 1px solid var(--line);
+  }
+  .viewer-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; flex-shrink: 0; }
+  .viewer-head .doc-name { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .viewer-head .doc-name strong { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .viewer-head .doc-name span { font-size: 12.5px; color: var(--text-3); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .viewer-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .viewer-body { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; transition: grid-template-columns .3s ease; }
+  .doc-viewer-modal.side-collapsed .viewer-body { grid-template-columns: 1fr 0; }
+  .doc-viewer-modal.side-collapsed .viewer-side {
+    width: 0; padding: 0; border: 0; overflow: hidden; opacity: 0; pointer-events: none;
+  }
+  .doc-viewer-modal.maximized {
+    max-width: 100%; width: 100%; height: 100dvh; border-radius: 0;
+  }
+  .doc-viewer-root.maximized { padding: 0; }
+  .viewer-stage { overflow: auto; background: var(--bg-sunk); padding: 32px; position: relative; }
+  .viewer-stage.readonly { user-select: none; -webkit-user-select: none; }
+  .viewer-side {
+    border-left: 1px solid var(--line); overflow-y: auto; padding: 20px;
+    background: var(--bg-elev); transition: opacity .25s, padding .25s, width .25s;
+  }
+  .viewer-side h5 { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; margin: 18px 0 10px; }
+  .viewer-side h5:first-child { margin-top: 0; }
+  .viewer-side dl.kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 10px; font-size: 13px; margin: 0; }
+  .viewer-side dl.kv dt { color: var(--text-3); }
+  .viewer-side dl.kv dd { word-break: break-word; margin: 0; }
+  .viewer-side .history { list-style: none; padding: 0; margin: 0; }
+  .viewer-side .history li { position: relative; padding: 0 0 14px 20px; font-size: 13px; }
+  .viewer-side .history li::before { content: ""; position: absolute; left: 4px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .viewer-side .history li::after { content: ""; position: absolute; left: 7.5px; top: 18px; bottom: 0; width: 1px; background: var(--line-2); }
+  .viewer-side .history li:last-child::after { display: none; }
+  .viewer-side .history strong { font-weight: 600; }
+  .viewer-side .history .tiny { font-size: 12px; color: var(--text-3); }
+
+  .stage-frame { width: 100%; height: 100%; min-height: 70vh; border: 0; border-radius: 8px; background: #fff; }
+  .office-frame { width: 100%; height: min(78vh, 900px); border: 0; border-radius: 8px; background: #fff; }
+  .stage-img { display: block; max-width: 100%; margin: 0 auto; border-radius: 8px; box-shadow: var(--shadow-md); }
+  .paper {
+    max-width: 820px; margin: 0 auto; min-height: 100%; background: #fff; color: #1d1d1f;
+    border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.08), 0 20px 50px rgba(0,0,0,.08);
+    padding: 64px 72px; outline: 0; font-family: Georgia, "Times New Roman", serif; font-size: 15px; line-height: 1.65;
+    position: relative;
+  }
+  .paper h1, .paper h2, .paper h3 { font-family: var(--font); letter-spacing: -0.02em; margin: 1em 0 .4em; line-height: 1.2; }
+  .paper h1 { font-size: 28px; } .paper h2 { font-size: 21px; } .paper h3 { font-size: 17px; }
+  .paper p { margin: 0 0 .8em; }
+  .paper ul, .paper ol { margin: 0 0 .8em 1.4em; }
+  .paper table { border-collapse: collapse; width: 100%; margin: 1em 0; font-family: var(--font); font-size: 13px; }
+  .paper td, .paper th { border: 1px solid #d2d2d7; padding: 6px 8px; text-align: left; vertical-align: top; }
+  .paper th { background: #f5f5f7; }
+  .paper img { max-width: 100%; }
+  .paper.readonly { user-select: none; -webkit-user-select: none; }
+  .viewer-banner { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+  .viewer-banner i { flex-shrink: 0; margin-top: 2px; }
+  .viewer-banner strong { display: block; color: var(--text); margin-bottom: 2px; }
+  .locked-state { height: 100%; min-height: 40vh; display: grid; place-items: center; text-align: center; color: var(--text-2); }
+  .locked-state .e-icon { width: 72px; height: 72px; border-radius: 22px; margin: 0 auto 16px; display: grid; place-items: center; background: var(--bg-sunk); color: var(--text-3); font-size: 32px; }
+  .locked-state h3 { color: var(--text); font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+  .docx-wrapper { background: #f0f0f0; padding: 20px; }
+  .docx-wrapper > section.docx { margin: 0 auto 20px; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+  .sheet-table { border-collapse: collapse; background: #fff; margin: 16px; font-size: 13px; }
+  .sheet-table td, .sheet-table th { border: 1px solid #ddd; padding: 6px 10px; }
+  .sheet-table th { background: #f5f5f7; font-weight: 600; }
+
+  .pdf-canvas-wrap { display: flex; flex-direction: column; gap: 16px; align-items: center; }
+  .pdf-canvas-wrap canvas { display: block; max-width: 100%; box-shadow: var(--shadow-md); border-radius: 6px; background: #fff; }
+
+  .edit-toolbar {
+    position: sticky; top: -32px; z-index: 5; margin: -32px -32px 24px; padding: 10px 16px;
+    display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;
+    background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid var(--line);
+  }
+  .edit-toolbar .icon-btn { width: 34px; height: 34px; border-radius: 9px; }
+  .edit-toolbar .icon-btn.on { background: var(--accent-soft); color: var(--accent); }
+  .edit-toolbar .sep { width: 1px; background: var(--line-2); margin: 6px 6px; }
+  .edit-toolbar select { height: 34px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--bg-elev); padding: 0 8px; font-size: 13px; }
+
+  .doc-tooltip {
+    position: fixed; z-index: 100010;
+    width: 340px; max-width: calc(100vw - 24px);
+    background: rgba(29,29,31,.96); color: #f5f5f7;
+    border-radius: 12px; padding: 14px 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    font-size: 12.5px; line-height: 1.5;
+    pointer-events: none; opacity: 0;
+    transform: translateY(4px);
+    transition: opacity .18s var(--ease), transform .18s var(--ease);
+  }
+  [data-theme="dark"] .doc-tooltip { background: rgba(245,245,247,.98); color: #1d1d1f; }
+  .doc-tooltip.visible { opacity: 1; transform: translateY(0); }
+  .doc-tooltip .tt-title {
+    font-weight: 700; font-size: 13px; margin-bottom: 10px;
+    word-break: break-word; white-space: normal;
+    padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.15);
+    line-height: 1.35;
+  }
+  [data-theme="dark"] .doc-tooltip .tt-title { border-bottom-color: rgba(0,0,0,.15); }
+  .doc-tooltip .tt-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; align-items: baseline; }
+  .doc-tooltip .tt-row .tt-label { opacity: .65; font-weight: 500; flex-shrink: 0; }
+  .doc-tooltip .tt-row .tt-val {
+    font-weight: 600; text-align: right;
+    word-break: break-word; white-space: normal;
+    max-width: 200px;
+  }
+
+  .tv-card .admin-actions {
+    position: absolute;
+    bottom: 10px; right: 10px;
+    display: flex; gap: 4px; z-index: 4;
+    opacity: 0; transition: opacity .2s;
+    background: rgba(0,0,0,.35);
+    padding: 4px; border-radius: 999px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .tv-card:hover .admin-actions { opacity: 1; }
+  .tv-card .admin-actions .icon-btn {
+    width: 28px; height: 28px; font-size: .72rem;
+    background: rgba(0,0,0,.6); color: #fff;
+  }
+  .tv-card .admin-actions .icon-btn:hover { background: var(--accent); }
+  .tv-card .admin-actions .icon-btn[data-del] { background: rgba(255,69,58,.85); }
+
+  @media (max-width: 1000px) {
+    .viewer-body { grid-template-columns: 1fr; }
+    .viewer-side { border-left: 0; border-top: 1px solid var(--line); max-height: 260px; }
+  }
+  @media (max-width: 760px) {
+    .nav-inner { padding: 10px 14px; gap: 10px; flex-wrap: wrap; }
+    .brand .brand-title { font-size: 20px !important; }
+    .carousel-section {
+      padding: max(28px, calc(var(--nav-h) * 0.25)) 20px 28px;
+      margin-top: 8px;
+      min-height: calc(100dvh - var(--nav-h) - 16px);
+    }
+    .carousel-3d {
+      height: min(360px, calc(100dvh - var(--nav-h) - 140px));
+      min-height: 240px;
+    }
+    .profile-card-3d {
+      width: min(240px, 76vw);
+      height: min(320px, calc(100dvh - var(--nav-h) - 180px), 54vh);
+      min-height: 240px;
+      padding: 22px 18px;
+    }
+    .card-icon { width: 80px; height: 80px; margin-bottom: 14px; overflow: hidden; }
+    .card-icon i { font-size: 2.1rem; }
+    .tv-card { width: 220px; height: 130px; }
+    .doc-card { width: 148px; height: 190px; }
+    .doc-card .doc-icon { width: 84px; height: 84px; font-size: 1rem; border-radius: 18px; }
+    .doc-grid-item { min-height: 180px; }
+    .doc-grid-item .doc-icon { width: 84px; height: 84px; font-size: 1rem; border-radius: 18px; }
+    .settings-layout { grid-template-columns: 1fr; height: min(70vh, 640px); }
+    .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
+    .settings-panel-scroll { max-height: none; }
+    .form-row-3 { grid-template-columns: 1fr; gap: 10px; }
+    .settings-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .settings-row .control input, .settings-row .control select { width: 100%; min-width: 0; }
+    .settings-row .control input[type="range"] { width: 100%; }
+    .modal-content { padding: 20px; }
+    .doc-viewer-root { padding: 0; }
+    .doc-viewer-modal { max-width: 100%; height: 100dvh; border-radius: 0; }
+    .viewer-stage { padding: 12px; }
+    .edit-toolbar { margin: -12px -12px 12px; top: -12px; }
+    .paper { padding: 24px 16px; }
+    .doc-tooltip { width: 280px; }
+    .logo-split-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body data-theme="light">
+
+<div class="toast-container" id="toastContainer"></div>
+<div class="upload-progress-overlay" id="uploadProgressOverlay" aria-live="polite">
+  <div class="upload-progress-box" id="uploadProgressBox">
+    <h4 id="uploadProgressTitle">Subiendo a la nube</h4>
+    <div class="up-sub" id="uploadProgressSub">Preparando archivos…</div>
+    <div class="upload-progress-track"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
+    <div class="upload-progress-pct" id="uploadProgressPct">0%</div>
+  </div>
+</div>
+<div class="doc-tooltip" id="docTooltip" role="tooltip" aria-hidden="true"></div>
+
+<div id="introOverlay" class="pre-hidden">
+  <div class="intro-content" id="introContent">
+    <img class="intro-logo animate" id="introLogo" alt="Logo intro" style="display:none;">
+    <div class="intro-text" id="introText" style="display:none;"></div>
+  </div>
+  <div class="intro-appname" id="introAppName"></div>
+</div>
+
+<div class="app-shell">
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="brand" id="headerHomeBtn" style="cursor:pointer;">
+        <img id="headerLogo" class="logo-img hidden" src="" alt="logo">
+        <span class="brand-text">
+          <span class="brand-title" id="headerTitle">FileShare</span>
+        </span>
+      </div>
+      <div class="nav-spacer"></div>
+      <div id="userBadge" class="user-badge hidden">
+        <span class="avatar" id="userAvatar">A</span>
+        <span id="userName">Admin</span>
+      </div>
+      <button class="icon-btn hidden" id="settingsBtn" title="Configuración"><i class="fas fa-cog"></i></button>
+      <button class="btn btn-secondary btn-sm hidden" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Salir</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div id="profileCarouselSection" class="carousel-section">
+      <div class="carousel-3d" id="carousel3d"></div>
+      <button class="nav-btn nav-left" id="carouselPrev" title="Anterior (←)"><i class="fas fa-chevron-left"></i></button>
+      <button class="nav-btn nav-right" id="carouselNext" title="Siguiente (→)"><i class="fas fa-chevron-right"></i></button>
+      <div class="carousel-dots" id="carouselDots"></div>
+    </div>
+
+    <div id="consultantView" class="view-section">
+      <div class="page-title"><h1>Mis documentos</h1><p>Tarjetas compartidas contigo</p></div>
+      <div id="consultantRows"></div>
+    </div>
+
+    <div id="adminView" class="view-section">
+      <div class="page-title"><h1>Panel de administración</h1><p>Gestiona tus tarjetas y comparte documentos</p></div>
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="upload"><i class="fas fa-cloud-upload-alt"></i> Carga masiva</button>
+        <button class="tab-btn" data-tab="manage"><i class="fas fa-layer-group"></i> Mis tarjetas</button>
+      </div>
+      <div id="adminUploadTab">
+        <div class="dropzone" id="dropZone">
+          <div class="dz-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+          <strong>Arrastra uno o varios archivos aquí</strong>
+          <div class="tiny" style="margin-top:6px;">o haz clic para seleccionar · luego crea la tarjeta</div>
+          <input type="file" id="fileInput" multiple style="display:none;">
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="tiny" style="font-weight:500">Haz clic en una tarjeta para previsualizar el archivo antes de compartir.</div>
+          <div class="view-switcher" id="uploadViewSwitcher">
+            <button data-upload-view="horizontal" class="active" title="Horizontal"><i class="fas fa-grip-lines"></i></button>
+            <button data-upload-view="grid" title="Cuadrícula"><i class="fas fa-th-large"></i></button>
+            <button data-upload-view="list" title="Lista"><i class="fas fa-list"></i></button>
+          </div>
+        </div>
+        <div id="uploadFileList" style="margin-bottom:16px;"></div>
+        <button class="btn btn-primary" id="shareFilesBtn" disabled><i class="fas fa-share-nodes"></i> Compartir archivos</button>
+      </div>
+      <div id="adminManageTab" style="display:none;"><div id="adminRows"></div></div>
+    </div>
+
+    <div id="shareDetailView" class="view-section">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px; margin-bottom:24px; flex-wrap:wrap; gap:14px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <button class="icon-btn" id="backToRowsBtn" style="background:var(--bg-elev); box-shadow:var(--shadow-sm); width:42px; height:42px;"><i class="fas fa-arrow-left"></i></button>
+          <div>
+            <h2 id="detailTitle" style="font-size:28px; font-weight:700;">Nombre de tarjeta</h2>
+            <p id="detailSub" style="color:var(--text-2); font-size:15px; margin-top:4px;">0 documento(s)</p>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="view-switcher" id="viewSwitcher">
+            <button data-view="horizontal" class="active" title="Horizontal"><i class="fas fa-grip-lines"></i></button>
+            <button data-view="grid" title="Cuadrícula"><i class="fas fa-th-large"></i></button>
+            <button data-view="list" title="Lista"><i class="fas fa-list"></i></button>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="downloadZipBtn"><i class="fas fa-file-zipper"></i> Descargar todo</button>
+        </div>
+      </div>
+      <div id="detailDocsBody"></div>
+    </div>
+
+  </main>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-content" style="max-width: 800px;">
+    <h2><i class="fas fa-cog"></i> Configuración</h2>
+    <div class="modal-body-scroll">
+    <div class="settings-layout">
+      <nav class="settings-nav" id="settingsNav">
+        <button data-section="general" class="active"><i class="fas fa-palette"></i> Apariencia</button>
+        <button data-section="branding"><i class="fas fa-image"></i> Marca e intro</button>
+        <button data-section="faces"><i class="fas fa-user-shield"></i> Rostros</button>
+        <button data-section="security"><i class="fas fa-lock"></i> Seguridad</button>
+        <button data-section="logs"><i class="fas fa-history"></i> Accesos</button>
+      </nav>
+      <div class="settings-panel-scroll">
+      <div class="settings-panel" id="settingsPanel">
+        
+        <!-- APARIENCIA (Encabezado) -->
+        <div class="settings-section" data-panel="general">
+          <h3><i class="fas fa-palette"></i> Apariencia</h3>
+          <div class="settings-row"><div class="label-group"><strong>Nombre de la app</strong><span>Se muestra en la cabecera</span></div><div class="control"><input type="text" id="appNameInput" placeholder="Configura el nombre"></div></div>
+          <div class="settings-row"><div class="label-group"><strong>Tamaño del nombre app</strong><span id="headerTitleSizeVal">18px</span></div><div class="control"><input type="range" id="headerTitleSizeInput" min="12" max="96" value="18"></div></div>
+          
+          <div class="settings-row"><div class="label-group"><strong>Color de acento</strong><span>Afecta botones y detalles</span></div><div class="control"><input type="color" id="accentColorInput" value="#0071e3"></div></div>
+          <div class="settings-row"><div class="label-group"><strong>Tema</strong><span>Claro, oscuro o automático (6:00 - 18:00 claro, resto oscuro)</span></div><div class="control"><select id="themeSelect"><option value="auto">Automático</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></div></div>
+          
+          <div style="margin-top:16px; border-top:1px solid var(--line); padding-top:16px;">
+            <h4 style="font-size:14px; font-weight:600; margin-bottom:12px;">Logos del Encabezado</h4>
+            <div class="logo-split-row">
+              <div class="logo-box">
+                <div class="logo-preview-box" id="headerLogoLightPrev"><i class="fas fa-image"></i></div>
+                <div class="logo-controls">
+                  <strong style="font-size:12px; color:var(--text-2)">Modo Claro</strong>
+                  <div class="btn-row">
+                    <button class="btn btn-secondary" onclick="document.getElementById('headerLogoLightInput').click()">Subir</button>
+                    <button class="btn btn-ghost" onclick="removeHeaderLogo('light')">Quitar</button>
+                  </div>
+                  <input type="file" id="headerLogoLightInput" hidden accept="image/*">
+                </div>
+              </div>
+              <div class="logo-box">
+                <div class="logo-preview-box" id="headerLogoDarkPrev"><i class="fas fa-image"></i></div>
+                <div class="logo-controls">
+                  <strong style="font-size:12px; color:var(--text-2)">Modo Oscuro</strong>
+                  <div class="btn-row">
+                    <button class="btn btn-secondary" onclick="document.getElementById('headerLogoDarkInput').click()">Subir</button>
+                    <button class="btn btn-ghost" onclick="removeHeaderLogo('dark')">Quitar</button>
+                  </div>
+                  <input type="file" id="headerLogoDarkInput" hidden accept="image/*">
+                </div>
+              </div>
+            </div>
+            <div class="settings-row" style="margin-top:10px;">
+              <div class="label-group"><strong>Tamaño del logo (Encabezado)</strong><span id="headerLogoSizeVal">32px</span></div>
+              <div class="control"><input type="range" id="headerLogoSizeInput" min="16" max="300" value="32"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MARCA E INTRO -->
+        <div class="settings-section hidden" data-panel="branding">
+          <h3><i class="fas fa-image"></i> Marca e Intro</h3>
+          
+          <div style="margin-bottom:16px;">
+            <h4 style="font-size:14px; font-weight:600; margin-bottom:12px;">Logos del Intro</h4>
+            <div class="logo-split-row">
+              <div class="logo-box">
+                <div class="logo-preview-box" id="introLogoLightPrev"><i class="fas fa-image"></i></div>
+                <div class="logo-controls">
+                  <strong style="font-size:12px; color:var(--text-2)">Modo Claro</strong>
+                  <div class="btn-row">
+                    <button class="btn btn-secondary" onclick="document.getElementById('introLogoLightInput').click()">Subir</button>
+                    <button class="btn btn-ghost" onclick="removeIntroLogo('light')">Quitar</button>
+                  </div>
+                  <input type="file" id="introLogoLightInput" hidden accept="image/*">
+                </div>
+              </div>
+              <div class="logo-box">
+                <div class="logo-preview-box" id="introLogoDarkPrev"><i class="fas fa-image"></i></div>
+                <div class="logo-controls">
+                  <strong style="font-size:12px; color:var(--text-2)">Modo Oscuro</strong>
+                  <div class="btn-row">
+                    <button class="btn btn-secondary" onclick="document.getElementById('introLogoDarkInput').click()">Subir</button>
+                    <button class="btn btn-ghost" onclick="removeIntroLogo('dark')">Quitar</button>
+                  </div>
+                  <input type="file" id="introLogoDarkInput" hidden accept="image/*">
+                </div>
+              </div>
+            </div>
+            <div class="settings-row" style="margin-top:10px;">
+              <div class="label-group"><strong>Tamaño del logo (Intro)</strong><span id="introLogoSizeVal">120px</span></div>
+              <div class="control"><input type="range" id="introLogoSizeInput" min="40" max="400" value="120"></div>
+            </div>
+          </div>
+
+          <div class="settings-row"><div class="label-group"><strong>Texto de intro</strong><span>Se muestra debajo del logo</span></div><div class="control"><input type="text" id="introTextInput" placeholder="Ej. Bienvenido"></div></div>
+          <div class="settings-row"><div class="label-group"><strong>Tamaño texto intro</strong><span id="introTextSizeVal">16px</span></div><div class="control"><input type="range" id="introTextSizeInput" min="10" max="72" value="16"></div></div>
+          
+          <div class="settings-row"><div class="label-group"><strong>Tamaño nombre app (Intro)</strong><span id="introAppNameSizeVal">48px</span></div><div class="control"><input type="range" id="introAppNameSizeInput" min="24" max="200" value="48"></div></div>
+
+          <div class="settings-row"><div class="label-group"><strong>Duración del Intro (Logo + Texto)</strong><span>Segundos</span></div><div class="control"><input type="number" id="introDurationInput" min="1" max="15" value="5"></div></div>
+          <div class="settings-row"><div class="label-group"><strong>Duración del Nombre App</strong><span>Segundos después del intro</span></div><div class="control"><input type="number" id="appNameDurationInput" min="1" max="10" value="2"></div></div>
+        </div>
+
+        <div class="settings-section hidden" data-panel="faces">
+          <h3><i class="fas fa-user-shield"></i> Rostros autorizados</h3>
+          <div style="font-size:13px; color:var(--text-2); margin-bottom:10px;" id="faceRegStatus">Sin rostros registrados</div>
+          <div class="face-profiles-list" id="faceProfilesList"></div>
+          <div class="face-reg-name-row"><input type="text" id="faceNameInput" placeholder="Nombre" maxlength="40"><button class="btn btn-primary btn-sm" id="registerFaceBtn"><i class="fas fa-user-plus"></i> Añadir</button></div>
+          <button class="btn btn-danger btn-sm" id="clearFacesBtn" style="margin-top:10px; width:100%;">Eliminar todos</button>
+        </div>
+        <div class="settings-section hidden" data-panel="security">
+          <h3><i class="fas fa-lock"></i> Seguridad</h3>
+          <div class="settings-row">
+            <div class="label-group"><strong>Cámara / biometría</strong><span>Usar reconocimiento facial al entrar como administrador</span></div>
+            <div class="control">
+              <label class="switch"><input type="checkbox" id="cameraToggle" checked><span class="slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-row"><div class="label-group"><strong>Contraseña respaldo</strong><span>Si falla biometría</span></div><div class="control" style="display:flex; gap:8px;"><input type="password" id="backupPasswordInput" placeholder="Contraseña"><button class="btn btn-secondary btn-sm" id="savePasswordBtn">Guardar</button></div></div>
+        </div>
+        <div class="settings-section hidden" data-panel="logs">
+          <h3><i class="fas fa-history"></i> Accesos denegados</h3>
+          <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+            <button class="btn btn-danger btn-sm" id="clearIntrudersBtn" type="button"><i class="fas fa-trash"></i> Eliminar todos</button>
+          </div>
+          <div id="intruderLog" style="display:flex; flex-direction:column; gap:10px; max-height:280px; overflow-y:auto;"></div>
+        </div>
+      </div>
+      </div><!-- /.settings-panel-scroll -->
+    </div>
+    </div><!-- /.modal-body-scroll -->
+    <div class="modal-actions"><button class="btn btn-primary" id="closeSettingsBtn">Listo</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="shareModal">
+  <div class="modal-content" style="max-width: 620px;">
+    <h2 id="shareModalTitle"><i class="fas fa-share-nodes"></i> Crear tarjeta</h2>
+    <div class="form-field"><label>Nombre de la tarjeta <span id="nameLockIcon" style="display:none; color:var(--danger); margin-left:5px;"><i class="fas fa-lock"></i> En uso</span></label><input type="text" id="shareName" placeholder="Ej. Reportes Q1" maxlength="60"><i class="fas fa-check-circle input-status" id="nameStatusIcon" style="color:var(--ok);"></i></div>
+    <div class="form-field"><label>Contraseña de acceso</label><input type="text" id="sharePassword" placeholder="Contraseña" maxlength="60"></div>
+    <div class="form-row-3">
+      <div class="form-field"><label>Tiempo vigencia</label><input type="number" id="shareExpiry" value="24" min="1" max="3650"></div>
+      <div class="form-field"><label>Unidad</label><select id="shareExpiryUnit"><option value="hours" selected>Horas</option><option value="days">Días</option></select></div>
+      <div class="form-field"><label>Tipo acceso</label><select id="shareAccessType"><option value="view">Solo ver</option><option value="download" selected>Ver y descargar</option></select></div>
+    </div>
+    <div id="editDocsSection" class="hidden" style="margin-top:20px; border-top:1px solid var(--line); padding-top:20px;">
+      <h3 style="font-size:16px; margin-bottom:12px;">Documentos incluidos</h3>
+      <div class="edit-doc-list" id="editDocList"></div>
+      <div class="dropzone" id="editDropZone" style="padding:20px; margin-bottom:0;">
+        <div style="font-size:13px; font-weight:500; color:var(--text-2);"><i class="fas fa-plus"></i> Arrastra más archivos o haz clic aquí</div>
+        <input type="file" id="editFileInput" multiple style="display:none;">
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:24px;"><button class="btn btn-secondary" id="cancelShareBtn">Cancelar</button><button class="btn btn-primary" id="confirmShareBtn"><i class="fas fa-check"></i> Guardar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="customDialogModal">
+  <div class="modal-content" style="max-width: 400px; text-align: center;">
+    <div id="customDialogIcon" style="font-size: 3rem; color: var(--accent); margin-bottom: 16px;"><i class="fas fa-info-circle"></i></div>
+    <h2 id="customDialogTitle" style="justify-content: center; margin-bottom: 8px;">Mensaje</h2>
+    <p id="customDialogText" style="margin-bottom: 20px;">Texto del mensaje.</p>
+    <input type="text" id="customDialogInput" class="hidden" style="width:100%; padding:12px; border-radius:12px; border:1px solid var(--line-2); background:var(--bg-sunk); margin-bottom:20px; outline:none; color:var(--text);">
+    <div class="modal-actions" id="customDialogActions" style="justify-content: center;"><button class="btn btn-secondary hidden" id="customDialogCancel">Cancelar</button><button class="btn btn-primary" id="customDialogOk">Aceptar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="passwordModal">
+  <div class="modal-content" style="max-width:400px;">
+    <h2><i class="fas fa-key"></i> Contraseña de respaldo</h2>
+    <div class="form-field"><label>Ingresa la contraseña</label><input type="password" id="backupPasswordCheck" placeholder="Contraseña"></div>
+    <div class="modal-actions"><button class="btn btn-secondary" id="passwordCancelBtn">Cancelar</button><button class="btn btn-primary" id="passwordVerifyBtn">Acceder</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="firstFaceModal">
+  <div class="modal-content" style="max-width:400px; text-align:center;">
+    <h2 style="justify-content:center;"><i class="fas fa-user-shield"></i> Configura tu rostro</h2>
+    <p style="margin:10px 0;">Eres el administrador general. Registra tu rostro para acceder.</p>
+    <input type="text" id="firstFaceName" placeholder="Tu nombre" style="width:100%; padding:14px; border-radius:12px; border:1px solid var(--line-2); margin:16px 0; background:var(--bg-sunk); outline:none; color:var(--text);">
+    <div class="modal-actions" style="justify-content: center;"><button class="btn btn-primary" id="firstFaceRegisterBtn"><i class="fas fa-camera"></i> Registrar rostro</button></div>
+  </div>
+</div>
+
+<div class="face-scan-overlay" id="faceScanOverlay" aria-hidden="true">
+  <div class="face-scan-box">
+    <div class="face-scan-header">
+      <div class="face-scan-title" id="faceScanTitle">Verificación facial</div>
+    </div>
+    <div class="face-scan-viewport">
+      <video id="faceScanVideo" autoplay playsinline muted></video>
+      <canvas id="faceScanCanvas" aria-hidden="true"></canvas>
+      <div class="face-scan-frame"></div>
+    </div>
+    <div class="face-scan-status" id="faceScanStatus">Inicializando cámara…</div>
+    <div class="face-scan-actions">
+      <button class="btn btn-secondary btn-sm" id="faceScanCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="doc-viewer-root" id="docViewerRoot">
+  <div class="doc-viewer-modal">
+    <div class="viewer-head">
+      <div id="viewerBadge"></div>
+      <div class="doc-name">
+        <strong id="viewerTitle">Documento</strong>
+        <span id="viewerSub"></span>
+      </div>
+      <div class="viewer-actions">
+        <button class="btn btn-secondary hidden" id="viewerEditBtn"><i class="fas fa-pencil"></i> Editar</button>
+        <button class="btn btn-secondary hidden" id="viewerCancelEdit">Descartar</button>
+        <button class="btn btn-primary hidden" id="viewerSaveEdit"><i class="fas fa-save"></i> Guardar cambios</button>
+        <button class="btn btn-secondary" id="viewerDlBtn"><i class="fas fa-download"></i> Descargar</button>
+        <button class="btn btn-secondary btn-sm" id="viewerToggleSideBtn" title="Mostrar/ocultar detalles"><i class="fas fa-panel-right"></i> Detalles</button>
+        <button class="btn btn-secondary btn-sm" id="viewerMaximizeBtn" title="Maximizar"><i class="fas fa-expand"></i></button>
+        <button class="icon-btn" id="viewerCloseBtn" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
+      </div>
+    </div>
+    <div class="viewer-body">
+      <div class="viewer-stage" id="viewerStage"></div>
+      <aside class="viewer-side" id="viewerSide"></aside>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   ESTADO Y UTILIDADES
+   ============================================================ */
+
+/* ============================================================
+   SUPABASE · BACKEND EN LA NUBE + TIEMPO REAL
+   ============================================================ */
+const SUPABASE_URL = 'https://armgvgyybuzzovuwscqg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFybWd2Z3l5YnV6em92dXdzY3FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3Nzc2NjMsImV4cCI6MjExMDM1MzY2M30.NXxNboEoPieUYT7rvYmVzkLFwaRYnsEynPMOm-FrZr4';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { params: { eventsPerSecond: 8 } }
+});
+
+const BUCKET_LOGOS = 'logos';
+const BUCKET_DOCS = 'documents';
+const BUCKET_FACES = 'faces';
+const BUCKET_INTRUDERS = 'intruders';
+
+// Caché local de respaldo (offline / arranque rápido)
+const store = {
+  get: (k, fb) => {
+    try {
+      const v = localStorage.getItem('fs_' + k);
+      if (v == null || v === '') return fb;
+      return JSON.parse(v);
+    } catch (e) { return fb; }
+  },
+  set: (k, v) => {
+    try {
+      localStorage.setItem('fs_' + k, JSON.stringify(v));
+      return true;
+    } catch (e) {
+      console.warn('local cache full', e);
+      return false;
+    }
+  }
+};
+
+const DEFAULT_CONFIG = {
+  appName: 'FileShare',
+  theme: 'auto',
+  accentColor: '#0071e3',
+  headerLogoLight: null,
+  headerLogoDark: null,
+  headerLogoSize: 32,
+  headerTitleSize: 18,
+  introLogoLight: null,
+  introLogoDark: null,
+  introLogoSize: 120,
+  introText: '',
+  introTextSize: 16,
+  introAppNameSize: 48,
+  introDuration: 5,
+  appNameDuration: 2,
+  backupPassword: '',
+  cameraEnabled: true,
+  faces: []
+};
+
+let config = { ...DEFAULT_CONFIG, ...(store.get('config', {}) || {}) };
+// Migración de claves antiguas
+config.headerLogoLight = config.headerLogoLight ?? config.logoDataUrl ?? null;
+config.headerLogoDark = config.headerLogoDark ?? null;
+config.headerLogoSize = config.headerLogoSize ?? config.logoSize ?? 32;
+config.headerTitleSize = config.headerTitleSize ?? config.titleSize ?? 18;
+config.introLogoLight = config.introLogoLight ?? config.logoDataUrl ?? null;
+config.introLogoDark = config.introLogoDark ?? null;
+config.introLogoSize = config.introLogoSize ?? 120;
+config.introTextSize = config.introTextSize ?? 16;
+config.introAppNameSize = config.introAppNameSize ?? 48;
+config.introDuration = config.introDuration ?? 5;
+config.appNameDuration = config.appNameDuration ?? 2;
+config.appName = config.appName ?? 'FileShare';
+config.introText = config.introText ?? '';
+config.theme = config.theme ?? 'auto';
+config.accentColor = config.accentColor ?? '#0071e3';
+config.cameraEnabled = config.cameraEnabled !== false;
+config.faces = Array.isArray(config.faces) ? config.faces : [];
+
+let shares = store.get('shares', []) || [];
+let intruderLogs = store.get('intruderLogs', []) || [];
+let cloudReady = false;
+let realtimeChannels = [];
+let saveConfigTimer = null;
+let syncingFromCloud = false;
+
+function publicUrl(bucket, path) {
+  if (!path) return null;
+  if (String(path).startsWith('http') || String(path).startsWith('data:')) return path;
+  const { data } = sb.storage.from(bucket).getPublicUrl(path);
+  return data && data.publicUrl ? data.publicUrl : null;
+}
+
+function dataUrlToBlob(dataUrl) {
+  try {
+    const [meta, b64] = dataUrl.split(',');
+    const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  } catch (e) { return null; }
+}
+
+async function uploadDataUrl(bucket, path, dataUrl) {
+  const blob = dataUrlToBlob(dataUrl);
+  if (!blob) throw new Error('dataUrl inválido');
+  const { error } = await sb.storage.from(bucket).upload(path, blob, {
+    upsert: true,
+    contentType: blob.type || 'application/octet-stream'
+  });
+  if (error) throw error;
+  return publicUrl(bucket, path);
+}
+
+async function uploadFileBlob(bucket, path, blob, contentType) {
+  const { error } = await sb.storage.from(bucket).upload(path, blob, {
+    upsert: true,
+    contentType: contentType || blob.type || 'application/octet-stream'
+  });
+  if (error) throw error;
+  return publicUrl(bucket, path);
+}
+
+function compressImageToDataUrl(file, maxSide = 512, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      reject(new Error('No es una imagen'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Imagen inválida'));
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth || img.width;
+          let h = img.naturalHeight || img.height;
+          if (!w || !h) { resolve(reader.result); return; }
+          const scale = Math.min(1, maxSide / Math.max(w, h));
+          w = Math.round(w * scale); h = Math.round(h * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const isPng = /png|svg|webp/i.test(file.type);
+          resolve(isPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', quality));
+        } catch (err) { resolve(reader.result); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Serializa config para la nube: logos data: → se suben aparte */
+async function pushConfigToCloud() {
+  if (!cloudReady || syncingFromCloud) return false;
+  try {
+    const payload = JSON.parse(JSON.stringify(config));
+    // Subir logos dataURL a Storage y dejar URL pública
+    const logoKeys = ['headerLogoLight','headerLogoDark','introLogoLight','introLogoDark'];
+    for (const key of logoKeys) {
+      const val = payload[key];
+      if (val && String(val).startsWith('data:')) {
+        const path = `branding/${key}.jpg`;
+        try {
+          payload[key] = await uploadDataUrl(BUCKET_LOGOS, path, val);
+        } catch (e) {
+          console.warn('logo upload', key, e);
+        }
+      }
+    }
+    // Thumbs de rostros
+    if (Array.isArray(payload.faces)) {
+      for (let i = 0; i < payload.faces.length; i++) {
+        const f = payload.faces[i];
+        if (f && f.thumb && String(f.thumb).startsWith('data:')) {
+          const path = `faces/${f.id || i}.jpg`;
+          try {
+            f.thumb = await uploadDataUrl(BUCKET_FACES, path, f.thumb);
+          } catch (e) { console.warn('face thumb', e); }
+        }
+      }
+    }
+    const { error } = await sb.from('app_settings').upsert({
+      id: 1,
+      data: payload,
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    store.set('config', config);
+    return true;
+  } catch (e) {
+    console.warn('pushConfigToCloud', e);
+    store.set('config', config);
+    return false;
+  }
+}
+
+function saveConfig(showOkToast = false) {
+  store.set('config', config);
+  clearTimeout(saveConfigTimer);
+  saveConfigTimer = setTimeout(async () => {
+    const ok = await pushConfigToCloud();
+    if (showOkToast) {
+      if (ok) showToast('Configuración guardada en la nube');
+      else showToast('Guardado local (nube no disponible)', 'fa-exclamation-triangle');
+    }
+  }, 400);
+  return true;
+}
+
+async function pullConfigFromCloud() {
+  try {
+    const { data, error } = await sb.from('app_settings').select('data').eq('id', 1).maybeSingle();
+    if (error) throw error;
+    if (data && data.data && typeof data.data === 'object') {
+      syncingFromCloud = true;
+      config = { ...DEFAULT_CONFIG, ...data.data };
+      store.set('config', config);
+      try { applyConfig(); } catch (_) {}
+      syncingFromCloud = false;
+      return true;
+    }
+  } catch (e) {
+    console.warn('pullConfigFromCloud', e);
+  }
+  return false;
+}
+
+async function fetchSharesFromCloud() {
+  try {
+    const { data: rows, error } = await sb.from('shares').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    const list = [];
+    for (const row of (rows || [])) {
+      const { data: docs, error: dErr } = await sb.from('share_documents')
+        .select('*').eq('share_id', row.id).order('added_at', { ascending: true });
+      if (dErr) console.warn(dErr);
+      const documents = (docs || []).map(d => ({
+        id: d.id,
+        name: d.name,
+        size: d.size,
+        mimeType: d.mime_type,
+        storagePath: d.storage_path,
+        dataUrl: d.public_url || publicUrl(BUCKET_DOCS, d.storage_path),
+        addedAt: d.added_at
+      }));
+      list.push({
+        id: row.id,
+        name: row.name,
+        password: row.password,
+        accessType: row.access_type,
+        expiry: new Date(row.expiry).getTime(),
+        createdAt: new Date(row.created_at).getTime(),
+        documents
+      });
+    }
+    shares = list;
+    store.set('shares', shares);
+    return true;
+  } catch (e) {
+    console.warn('fetchSharesFromCloud', e);
+    return false;
+  }
+}
+
+async function fetchIntrudersFromCloud() {
+  try {
+    const { data, error } = await sb.from('intruder_logs')
+      .select('*').order('created_at', { ascending: false }).limit(20);
+    if (error) throw error;
+    intruderLogs = (data || []).map(r => ({
+      id: r.id,
+      image: r.public_url || publicUrl(BUCKET_INTRUDERS, r.image_path),
+      timestamp: new Date(r.created_at).getTime()
+    }));
+    store.set('intruderLogs', intruderLogs);
+    return true;
+  } catch (e) {
+    console.warn('fetchIntrudersFromCloud', e);
+    return false;
+  }
+}
+
+function showUploadProgress(title, sub) {
+  const ov = $('uploadProgressOverlay');
+  const box = $('uploadProgressBox');
+  if (!ov || !box) return;
+  box.classList.remove('done');
+  $('uploadProgressTitle').textContent = title || 'Subiendo a la nube';
+  $('uploadProgressSub').textContent = sub || 'Preparando…';
+  $('uploadProgressBar').style.width = '0%';
+  $('uploadProgressPct').textContent = '0%';
+  ov.classList.add('visible');
+}
+function setUploadProgress(pct, sub) {
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  const bar = $('uploadProgressBar');
+  const pctEl = $('uploadProgressPct');
+  if (bar) bar.style.width = p + '%';
+  if (pctEl) pctEl.textContent = p + '%';
+  if (sub && $('uploadProgressSub')) $('uploadProgressSub').textContent = sub;
+}
+function finishUploadProgress(okMsg) {
+  const box = $('uploadProgressBox');
+  if (box) box.classList.add('done');
+  setUploadProgress(100, okMsg || 'Carga completada');
+  if ($('uploadProgressTitle')) $('uploadProgressTitle').textContent = 'Listo';
+  setTimeout(() => {
+    const ov = $('uploadProgressOverlay');
+    if (ov) ov.classList.remove('visible');
+  }, 900);
+}
+function hideUploadProgress() {
+  const ov = $('uploadProgressOverlay');
+  if (ov) ov.classList.remove('visible');
+}
+
+async function cloudUpsertShare(share, documentFiles /* optional File[] parallel to new docs */) {
+  const total = Math.max(1, (share.documents || []).length);
+  showUploadProgress('Subiendo a la nube', `0 / ${total} archivos`);
+  setUploadProgress(2, 'Registrando tarjeta…');
+
+  const { error } = await sb.from('shares').upsert({
+    id: share.id,
+    name: share.name,
+    password: share.password,
+    access_type: share.accessType,
+    expiry: new Date(share.expiry).toISOString(),
+    created_at: new Date(share.createdAt || Date.now()).toISOString(),
+    updated_at: new Date().toISOString()
+  });
+  if (error) { hideUploadProgress(); throw error; }
+
+  await sb.from('share_documents').delete().eq('share_id', share.id);
+
+  const uploadedDocs = [];
+  let i = 0;
+  for (const doc of share.documents) {
+    i++;
+    const label = `Archivo ${i} de ${total}: ${doc.name}`;
+    setUploadProgress(5 + (i - 1) / total * 90, label);
+    let storagePath = doc.storagePath;
+    let pub = doc.dataUrl;
+    if (doc.dataUrl && String(doc.dataUrl).startsWith('data:')) {
+      const safeName = String(doc.name).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120);
+      storagePath = `${share.id}/${Date.now()}_${safeName}`;
+      pub = await uploadDataUrl(BUCKET_DOCS, storagePath, doc.dataUrl);
+    } else if (!storagePath && pub && String(pub).startsWith('http')) {
+      storagePath = doc.storagePath || `${share.id}/${doc.name}`;
+    }
+    const { data: ins, error: iErr } = await sb.from('share_documents').insert({
+      share_id: share.id,
+      name: doc.name,
+      size: doc.size || 0,
+      mime_type: doc.mimeType || null,
+      storage_path: storagePath || `${share.id}/${doc.name}`,
+      public_url: pub || null
+    }).select().single();
+    if (iErr) console.warn('doc insert', iErr);
+    uploadedDocs.push({
+      id: ins && ins.id,
+      name: doc.name,
+      size: doc.size || 0,
+      dataUrl: pub,
+      storagePath,
+      mimeType: doc.mimeType
+    });
+    setUploadProgress(5 + i / total * 90, label);
+  }
+  share.documents = uploadedDocs;
+  finishUploadProgress(`${total} archivo(s) cargados correctamente`);
+  return share;
+}
+
+async function cloudDeleteShare(id) {
+  // Borrar archivos del bucket (best effort)
+  try {
+    const { data: docs } = await sb.from('share_documents').select('storage_path').eq('share_id', id);
+    const paths = (docs || []).map(d => d.storage_path).filter(Boolean);
+    if (paths.length) await sb.storage.from(BUCKET_DOCS).remove(paths);
+  } catch (_) {}
+  await sb.from('share_documents').delete().eq('share_id', id);
+  const { error } = await sb.from('shares').delete().eq('id', id);
+  if (error) throw error;
+}
+
+async function cloudAddIntruder(dataUrl) {
+  try {
+    const path = `intruder_${Date.now()}.jpg`;
+    const pub = await uploadDataUrl(BUCKET_INTRUDERS, path, dataUrl);
+    const { data, error } = await sb.from('intruder_logs').insert({
+      image_path: path,
+      public_url: pub
+    }).select().single();
+    if (error) throw error;
+    return { id: data.id, image: pub, timestamp: Date.now() };
+  } catch (e) {
+    console.warn('cloudAddIntruder', e);
+    return { image: dataUrl, timestamp: Date.now() };
+  }
+}
+
+function isShareExpired(share) {
+  if (!share) return true;
+  const exp = typeof share.expiry === 'number' ? share.expiry : new Date(share.expiry).getTime();
+  return !exp || Date.now() > exp;
+}
+
+function kickFromShare(reason, icon) {
+  tooltip.hide();
+  closeDocViewer();
+  const id = currentDetailShare && currentDetailShare.id;
+  if (id) delete unlockedSharePasswords[id];
+  currentDetailShare = null;
+  const detail = $('shareDetailView');
+  if (detail) detail.classList.remove('active');
+  if ($('adminView')) $('adminView').classList.remove('active');
+  if ($('consultantView')) $('consultantView').classList.add('active');
+  renderConsultantView();
+  appSession.save();
+  customAlert(reason === 'deleted' ? 'Eliminado' : reason === 'password' ? 'Acceso revocado' : 'Plazo vencido',
+    reason === 'deleted' ? 'Esta compartición fue eliminada por el administrador.'
+    : reason === 'password' ? 'La contraseña de esta compartición cambió. Vuelve a ingresar con la nueva clave.'
+    : 'El plazo de esta compartición ha expirado. Ya no tienes acceso.',
+    icon || (reason === 'deleted' ? 'fa-trash' : reason === 'password' ? 'fa-key' : 'fa-clock'));
+}
+
+/** Si el consultor está viendo una tarjeta que expiró, se eliminó o cambió la clave, sacarlo */
+function enforceConsultantShareAccess() {
+  try {
+    const inDetail = $('shareDetailView') && $('shareDetailView').classList.contains('active');
+    const inConsultant = $('consultantView') && $('consultantView').classList.contains('active');
+    if (!inDetail && !inConsultant && !(viewerState && viewerState.share)) return;
+
+    if (currentDetailShare) {
+      const fresh = shares.find(s => s.id === currentDetailShare.id);
+      if (!fresh) {
+        kickFromShare('deleted', 'fa-trash');
+        return;
+      }
+      if (isShareExpired(fresh)) {
+        kickFromShare('expired', 'fa-clock');
+        return;
+      }
+      const knownPwd = unlockedSharePasswords[fresh.id];
+      if (knownPwd != null && String(fresh.password) !== String(knownPwd)) {
+        kickFromShare('password', 'fa-key');
+        return;
+      }
+      // Actualizar en vivo documentos y metadatos
+      const prevDocId = viewerState && viewerState.doc && (viewerState.doc.id || viewerState.doc.name);
+      currentDetailShare = fresh;
+      try {
+        $('detailTitle').textContent = fresh.name;
+        $('detailSub').textContent = `${fresh.documents.length} documento(s) · ${fresh.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`;
+        $('downloadZipBtn').style.display = fresh.accessType === 'download' ? '' : 'none';
+        renderDetailBody();
+      } catch (_) {}
+      // Si el documento abierto ya no existe, cerrar visor
+      if (viewerState && viewerState.doc && viewerState.share && viewerState.share.id === fresh.id) {
+        const still = (fresh.documents || []).find(d =>
+          (viewerState.doc.id && d.id === viewerState.doc.id) ||
+          (d.name === viewerState.doc.name && d.size === viewerState.doc.size)
+        );
+        if (!still) {
+          closeDocViewer();
+          showToast('El documento ya no está disponible', 'fa-info-circle');
+        } else if (still.dataUrl && viewerState.doc.dataUrl !== still.dataUrl) {
+          // Archivo reemplazado: recargar
+          openDocViewer(still, fresh);
+        }
+      }
+    }
+
+    if (viewerState && viewerState.share) {
+      const s = shares.find(x => x.id === viewerState.share.id);
+      if (!s) {
+        closeDocViewer();
+        customAlert('Eliminado', 'Esta compartición fue eliminada por el administrador.', 'fa-trash');
+      } else if (isShareExpired(s)) {
+        closeDocViewer();
+        customAlert('Plazo vencido', 'El plazo de esta compartición ha expirado.', 'fa-clock');
+      } else {
+        const knownPwd = unlockedSharePasswords[s.id];
+        if (knownPwd != null && String(s.password) !== String(knownPwd)) {
+          closeDocViewer();
+          if (currentDetailShare && currentDetailShare.id === s.id) kickFromShare('password', 'fa-key');
+          else customAlert('Acceso revocado', 'La contraseña de esta compartición cambió.', 'fa-key');
+        }
+      }
+    }
+  } catch (e) { console.warn(e); }
+}
+
+function refreshUIFromState() {
+  tooltip.hide();
+  try { applyConfig(); } catch (_) {}
+  try { renderConsultantView(); } catch (_) {}
+  try { renderAdminView(); } catch (_) {}
+  try { renderFaceList(); } catch (_) {}
+  try { renderIntruderLogs(); } catch (_) {}
+  enforceConsultantShareAccess();
+}
+
+function setupRealtime() {
+  // Limpiar canales previos
+  realtimeChannels.forEach(ch => { try { sb.removeChannel(ch); } catch (_) {} });
+  realtimeChannels = [];
+
+  const chSettings = sb.channel('rt-app-settings')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, async () => {
+      await pullConfigFromCloud();
+      refreshUIFromState();
+    })
+    .subscribe();
+
+  const chShares = sb.channel('rt-shares')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'shares' }, async () => {
+      await fetchSharesFromCloud();
+      refreshUIFromState();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'share_documents' }, async () => {
+      await fetchSharesFromCloud();
+      refreshUIFromState();
+    })
+    .subscribe();
+
+  const chIntr = sb.channel('rt-intruders')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'intruder_logs' }, async () => {
+      await fetchIntrudersFromCloud();
+      try { renderIntruderLogs(); } catch (_) {}
+    })
+    .subscribe();
+
+  realtimeChannels.push(chSettings, chShares, chIntr);
+}
+
+async function initCloud() {
+  try {
+    // Ping simple
+    const { error } = await sb.from('app_settings').select('id').limit(1);
+    if (error) throw error;
+    cloudReady = true;
+    await pullConfigFromCloud();
+    await fetchSharesFromCloud();
+    await fetchIntrudersFromCloud();
+    // Si no hay fila de settings, crear con config local
+    await pushConfigToCloud();
+    setupRealtime();
+    console.log('[FileShare] Supabase conectado · tiempo real activo');
+    return true;
+  } catch (e) {
+    cloudReady = false;
+    console.warn('[FileShare] Supabase no disponible, modo local', e);
+    return false;
+  }
+}
+
+
+let selectedFiles = [];
+let currentDetailShare = null;
+/** Contraseña con la que el consultor desbloqueó cada tarjeta (para detectar cambios en tiempo real) */
+let unlockedSharePasswords = {};
+
+const appSession = {
+  key: 'fs_app_session',
+  get() {
+    try { return JSON.parse(sessionStorage.getItem(this.key) || 'null'); } catch (_) { return null; }
+  },
+  set(data) {
+    try { sessionStorage.setItem(this.key, JSON.stringify(data)); } catch (_) {}
+  },
+  clear() {
+    try { sessionStorage.removeItem(this.key); } catch (_) {}
+    unlockedSharePasswords = {};
+  },
+  save() {
+    const detailId = currentDetailShare ? currentDetailShare.id : null;
+    this.set({
+      role: hasAdminAccess ? 'admin' : (($('consultantView') && $('consultantView').classList.contains('active')) || ($('shareDetailView') && $('shareDetailView').classList.contains('active'))) ? 'consultant' : null,
+      isPrimaryAdmin: !!isPrimaryAdmin,
+      detailShareId: detailId,
+      unlocked: unlockedSharePasswords,
+      faceSessionAuthed: !!faceSessionAuthed
+    });
+  }
+};
+let currentDocsView = 'horizontal';
+let currentUploadView = 'horizontal';
+let editingShareId = null;
+let tempEditDocs = [];
+
+const profiles = [
+  { id:'consultor', title:'Consultor', icon:'fa-user-tie', description:'Consulta los documentos compartidos.', badge:'Solo lectura', color:'#1d9d4f', colorEnd:'#15803d' },
+  { id:'administrador', title:'Administrador', icon:'fa-user-shield', description:'Gestiona tarjetas y accesos.', badge:'Acceso total', color:'#0071e3', colorEnd:'#0055cc' }
+];
+
+let rotationAngle = 0;
+const angleStep = 360 / profiles.length;
+let isAnimating = false;
+let activeCardIndex = 0;
+
+let isPrimaryAdmin = false;
+let hasAdminAccess = false;
+let faceSessionAuthed = false;
+
+let faceApiReady = false;
+let faceApiLoading = null;
+let faceStream = null;
+let faceRaf = null;
+let faceScanMode = null;
+let faceScanResolve = null;
+let faceMatchStreak = 0;
+let faceFailStreak = 0;
+
+const FACE_API_MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+const FACE_MATCH_THRESHOLD = 0.52;
+const FACE_MATCH_STREAK_NEED = 2;
+const FACE_DENY_STREAK_NEED = 4;
+const FACE_REGISTER_SAMPLES = 5;
+const FACE_DETECT_INTERVAL_MS = 90;
+
+const $ = id => document.getElementById(id);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ============================================================
+   TOOLTIP CUSTOM
+   ============================================================ */
+const tooltip = {
+  el: null,
+  showTimer: null,
+  hideTimer: null,
+  currentTarget: null,
+  show(target, html) {
+    const el = $('docTooltip');
+    if (!el || !target || !document.body.contains(target)) return;
+    this.currentTarget = target;
+    el.innerHTML = html;
+    el.classList.add('visible');
+    el.setAttribute('aria-hidden', 'false');
+    const r = target.getBoundingClientRect();
+    const margin = 12;
+    requestAnimationFrame(() => {
+      if (!this.currentTarget || !document.body.contains(this.currentTarget)) {
+        this.hide();
+        return;
+      }
+      const tRect = el.getBoundingClientRect();
+      let left = r.left + r.width / 2 - tRect.width / 2;
+      let top = r.top - tRect.height - margin;
+      if (top < 8) top = r.bottom + margin;
+      if (left < 8) left = 8;
+      if (left + tRect.width > window.innerWidth - 8) left = window.innerWidth - tRect.width - 8;
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+    });
+  },
+  hide() {
+    clearTimeout(this.showTimer);
+    clearTimeout(this.hideTimer);
+    this.currentTarget = null;
+    const el = $('docTooltip');
+    if (!el) return;
+    el.classList.remove('visible');
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '';
+  },
+  bind(card, htmlFn) {
+    card.addEventListener('mouseenter', () => {
+      clearTimeout(this.hideTimer);
+      this.showTimer = setTimeout(() => this.show(card, htmlFn()), 380);
+    });
+    card.addEventListener('mouseleave', () => {
+      clearTimeout(this.showTimer);
+      this.hideTimer = setTimeout(() => this.hide(), 60);
+    });
+    card.addEventListener('mousedown', () => {
+      clearTimeout(this.showTimer);
+      this.hide();
+    });
+    card.addEventListener('remove', () => this.hide());
+  },
+  unbindAll() { this.hide(); }
+};
+// Si el elemento bajo el tooltip desaparece (p.ej. se borró el doc), ocultar
+document.addEventListener('mouseover', (e) => {
+  if (!tooltip.currentTarget) return;
+  if (!document.body.contains(tooltip.currentTarget)) tooltip.hide();
+});
+window.addEventListener('scroll', () => tooltip.hide(), true);
+window.addEventListener('blur', () => tooltip.hide());
+
+function buildTooltipHtml(doc) {
+  const typeName = getFileTypeName(doc.name);
+  const sizeStr = doc.size ? (doc.size / 1024).toFixed(1) + ' KB' : '—';
+  const dt = doc.lastModified ? new Date(doc.lastModified) : (doc.addedAt || new Date());
+  const dateStr = dt.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `
+    <div class="tt-title">${esc(doc.name)}</div>
+    <div class="tt-row"><span class="tt-label">Tipo</span><span class="tt-val">${esc(typeName)}</span></div>
+    <div class="tt-row"><span class="tt-label">Formato</span><span class="tt-val">.${esc((doc.name.split('.').pop() || '').toLowerCase())}</span></div>
+    <div class="tt-row"><span class="tt-label">Tamaño</span><span class="tt-val">${esc(sizeStr)}</span></div>
+    <div class="tt-row"><span class="tt-label">Modificado</span><span class="tt-val">${esc(dateStr)}</span></div>
+  `;
+}
+
+function buildShareTooltipHtml(share) {
+  const hoursLeft = Math.floor((share.expiry - Date.now()) / 3600000);
+  const expStr = hoursLeft < 0 ? 'Expirada' : (hoursLeft < 24 ? `En ${hoursLeft} h` : `En ${Math.floor(hoursLeft/24)} d`);
+  return `
+    <div class="tt-title">${esc(share.name)}</div>
+    <div class="tt-row"><span class="tt-label">Tipo de acceso</span><span class="tt-val">${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}</span></div>
+    <div class="tt-row"><span class="tt-label">Documentos</span><span class="tt-val">${share.documents.length}</span></div>
+    <div class="tt-row"><span class="tt-label">Expira</span><span class="tt-val">${esc(expStr)}</span></div>
+    <div class="tt-row"><span class="tt-label">Creada</span><span class="tt-val">${new Date(share.createdAt || Date.now()).toLocaleDateString('es-MX')}</span></div>
+  `;
+}
+
+/* ============================================================
+   UTILIDADES DE NOMBRES (duplicados)
+   ============================================================ */
+function splitNameExt(name) {
+  const m = String(name).match(/^(.*?)(\.[^.]*)$/);
+  if (!m) return { base: String(name), ext: '' };
+  return { base: m[1], ext: m[2] };
+}
+function findDuplicateIndex(list, fileName, skipIndex = -1) {
+  const lower = String(fileName).toLowerCase();
+  for (let i = 0; i < list.length; i++) {
+    if (i === skipIndex) continue;
+    if (String(list[i].name).toLowerCase() === lower) return i;
+  }
+  return -1;
+}
+function makeUniqueName(list, fileName) {
+  const { base, ext } = splitNameExt(fileName);
+  const used = new Set(list.map(f => String(f.name).toLowerCase()));
+  let i = 1;
+  while (used.has(`${base} (${i})${ext}`.toLowerCase())) i++;
+  return `${base} (${i})${ext}`;
+}
+async function askDuplicate(fileName, existingList) {
+  const nextName = makeUniqueName(existingList, fileName);
+  const ok = await customConfirm(
+    'Archivo duplicado',
+    `Ya existe un archivo llamado "${fileName}". ¿Deseas agregar el duplicado como "${nextName}"?`,
+    false
+  );
+  return { ok: !!ok, nextName };
+}
+
+function enableDragScroll(el) {
+  if (!el || el.dataset.dragEnabled === '1') return;
+  el.dataset.dragEnabled = '1';
+  let isDown = false, startX = 0, startScroll = 0, moved = false;
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, a')) return;
+    isDown = true; moved = false;
+    startX = e.pageX; startScroll = el.scrollLeft;
+    el.classList.add('dragging');
+  });
+  el.addEventListener('mousemove', (e) => {
+    if (!isDown) return;
+    const dx = e.pageX - startX;
+    if (Math.abs(dx) > 4) moved = true;
+    if (moved) { e.preventDefault(); el.scrollLeft = startScroll - dx; }
+  });
+  const stopDrag = () => {
+    if (!isDown) return;
+    isDown = false;
+    el.classList.remove('dragging');
+    if (moved) {
+      const killClick = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      el.addEventListener('click', killClick, { capture: true, once: true });
+      setTimeout(() => el.removeEventListener('click', killClick, { capture: true }), 50);
+    }
+  };
+  el.addEventListener('mouseup', stopDrag);
+  el.addEventListener('mouseleave', stopDrag);
+  window.addEventListener('mouseup', stopDrag);
+  el.addEventListener('wheel', (e) => {
+    const canScroll = el.scrollWidth > el.clientWidth + 2;
+    if (!canScroll) return;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (delta === 0) return;
+    e.preventDefault();
+    el.scrollLeft += delta;
+  }, { passive: false });
+}
+function refreshDragScroll() {
+  document.querySelectorAll('.tv-row-scroll').forEach(enableDragScroll);
+}
+
+let dialogResolve = null;
+function customAlert(title, text, icon = 'fa-info-circle') {
+  return new Promise(resolve => {
+    dialogResolve = resolve;
+    $('customDialogIcon').innerHTML = `<i class="fas ${icon}"></i>`;
+    $('customDialogTitle').textContent = title;
+    $('customDialogText').textContent = text;
+    $('customDialogInput').classList.add('hidden');
+    $('customDialogCancel').classList.add('hidden');
+    $('customDialogOk').textContent = 'Aceptar';
+    $('customDialogModal').classList.add('active');
+  });
+}
+function customConfirm(title, text, isDanger = false) {
+  return new Promise(resolve => {
+    dialogResolve = resolve;
+    $('customDialogIcon').innerHTML = isDanger ? '<i class="fas fa-exclamation-triangle" style="color:var(--danger)"></i>' : '<i class="fas fa-question-circle"></i>';
+    $('customDialogTitle').textContent = title;
+    $('customDialogText').textContent = text;
+    $('customDialogInput').classList.add('hidden');
+    $('customDialogCancel').classList.remove('hidden');
+    $('customDialogOk').textContent = 'Aceptar';
+    $('customDialogOk').className = isDanger ? 'btn btn-danger' : 'btn btn-primary';
+    $('customDialogModal').classList.add('active');
+  });
+}
+function customPrompt(title, text, defaultValue = '') {
+  return new Promise(resolve => {
+    dialogResolve = resolve;
+    $('customDialogIcon').innerHTML = '<i class="fas fa-pen"></i>';
+    $('customDialogTitle').textContent = title;
+    $('customDialogText').textContent = text;
+    $('customDialogInput').value = defaultValue;
+    $('customDialogInput').classList.remove('hidden');
+    $('customDialogCancel').classList.remove('hidden');
+    $('customDialogOk').textContent = 'Guardar';
+    $('customDialogOk').className = 'btn btn-primary';
+    $('customDialogModal').classList.add('active');
+    setTimeout(() => $('customDialogInput').focus(), 100);
+  });
+}
+$('customDialogOk').onclick = () => {
+  const val = $('customDialogInput').classList.contains('hidden') ? true : $('customDialogInput').value;
+  $('customDialogModal').classList.remove('active');
+  if (dialogResolve) dialogResolve(val);
+};
+$('customDialogCancel').onclick = () => {
+  $('customDialogModal').classList.remove('active');
+  if (dialogResolve) dialogResolve(null);
+};
+
+function showToast(msg, icon = 'fa-check-circle') {
+  const div = document.createElement('div');
+  div.className = 'toast';
+  div.innerHTML = `<i class="fas ${icon}"></i> ${msg}`;
+  $('toastContainer').appendChild(div);
+  setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
+}
+
+function setVal(id, value) {
+  const el = $(id);
+  if (!el) return;
+  if ('value' in el) el.value = value;
+  else el.textContent = value;
+}
+
+async function init() {
+  try {
+    applyConfig();
+    buildCarousel();
+    renderConsultantView();
+    renderAdminView();
+    setupEventListeners();
+    renderFaceList();
+    renderIntruderLogs();
+    const camToggle = $('cameraToggle');
+    if (camToggle) camToggle.checked = config.cameraEnabled !== false;
+
+    // Restaurar sesión (sin intro) si había consultor/admin activo al refrescar
+    const hadSession = restoreSessionFromStorage();
+    if (!hadSession) checkIntro();
+    else {
+      const ov = $('introOverlay');
+      if (ov) { ov.classList.add('off'); ov.classList.remove('pre-hidden', 'hidden'); }
+    }
+
+    // Conectar Supabase en paralelo
+    initCloud().then(() => {
+      refreshUIFromState();
+      // Tras cargar shares de la nube, revalidar detalle restaurado
+      const s = appSession.get();
+      if (s && s.role === 'consultant' && s.detailShareId) {
+        const share = shares.find(x => x.id === s.detailShareId);
+        if (share && unlockedSharePasswords[share.id] === String(share.password) && !isShareExpired(share)) {
+          if (!$('shareDetailView').classList.contains('active')) openDetailView(share);
+          else { currentDetailShare = share; renderDetailBody(); }
+        } else if (s.detailShareId) {
+          enforceConsultantShareAccess();
+        }
+      }
+    });
+    // Revisar plazos / clave / docs cada 15 s
+    setInterval(() => {
+      try { enforceConsultantShareAccess(); } catch (_) {}
+    }, 15000);
+    try { await ensureFaceApi(); } catch (e) { console.warn('Face API no disponible'); }
+    refreshDragScroll();
+    try {
+      if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    } catch (e) {}
+  } catch (err) {
+    console.error('init error', err);
+    try {
+      const ov = $('introOverlay');
+      if (ov) { ov.classList.add('hidden', 'off'); }
+    } catch (_) {}
+    try { buildCarousel(); } catch (_) {}
+  }
+}
+
+function applyAccentColor(hex) {
+  const c = hex || config.accentColor || '#0071e3';
+  document.documentElement.style.setProperty('--accent', c);
+  // Hover un poco más claro
+  document.documentElement.style.setProperty('--accent-hover', c);
+  // Soft: mismo color con alpha
+  try {
+    const m = String(c).trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (m) {
+      let h = m[1];
+      if (h.length === 3) h = h.split('').map(x => x + x).join('');
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      document.documentElement.style.setProperty('--accent-soft', `rgba(${r},${g},${b},0.16)`);
+    } else {
+      document.documentElement.style.setProperty('--accent-soft', 'rgba(0,113,227,0.16)');
+    }
+  } catch (_) {
+    document.documentElement.style.setProperty('--accent-soft', 'rgba(0,113,227,0.16)');
+  }
+}
+
+function applyConfig() {
+  const accent = config.accentColor || '#0071e3';
+  const hLogo = Number(config.headerLogoSize) || 32;
+  const hTitle = Number(config.headerTitleSize) || 18;
+  const iLogo = Number(config.introLogoSize) || 120;
+  const iText = Number(config.introTextSize) || 16;
+  const iApp = Number(config.introAppNameSize) || 48;
+  const iDur = Number(config.introDuration) || 5;
+  const aDur = Number(config.appNameDuration) || 2;
+
+  config.headerLogoSize = hLogo;
+  config.headerTitleSize = hTitle;
+  config.introLogoSize = iLogo;
+  config.introTextSize = iText;
+  config.introAppNameSize = iApp;
+  config.introDuration = iDur;
+  config.appNameDuration = aDur;
+  config.accentColor = accent;
+
+  document.documentElement.style.setProperty('--header-logo-size', hLogo + 'px');
+  document.documentElement.style.setProperty('--header-title-size', hTitle + 'px');
+  document.documentElement.style.setProperty('--intro-logo-size', iLogo + 'px');
+  document.documentElement.style.setProperty('--intro-text-size', iText + 'px');
+  document.documentElement.style.setProperty('--intro-appname-size', iApp + 'px');
+
+  const navH = Math.max(64, hLogo + 24);
+  document.documentElement.style.setProperty('--nav-h', navH + 'px');
+
+  try { applyTheme(config.theme || 'auto'); } catch (e) { console.warn(e); }
+  // Acento DESPUÉS del tema (claro/oscuro) para que valga en ambos
+  applyAccentColor(accent);
+
+  setVal('appNameInput', config.appName || '');
+  setVal('introTextInput', config.introText || '');
+  setVal('themeSelect', config.theme || 'auto');
+  setVal('accentColorInput', accent);
+
+  setVal('headerLogoSizeInput', hLogo);
+  setVal('headerLogoSizeVal', hLogo + 'px');
+  setVal('headerTitleSizeInput', hTitle);
+  setVal('headerTitleSizeVal', hTitle + 'px');
+  setVal('introLogoSizeInput', iLogo);
+  setVal('introLogoSizeVal', iLogo + 'px');
+  setVal('introTextSizeInput', iText);
+  setVal('introTextSizeVal', iText + 'px');
+  setVal('introAppNameSizeInput', iApp);
+  setVal('introAppNameSizeVal', iApp + 'px');
+  setVal('introDurationInput', iDur);
+  setVal('appNameDurationInput', aDur);
+
+  try { updateLogoPreviews(); } catch (e) { console.warn(e); }
+  try { updateSessionUI(); } catch (e) { console.warn(e); }
+}
+
+function updateLogoPreviews() {
+  const hLight = $('headerLogoLightPrev');
+  if (hLight) hLight.innerHTML = config.headerLogoLight ? `<img src="${config.headerLogoLight}">` : '<i class="fas fa-image"></i>';
+  const hDark = $('headerLogoDarkPrev');
+  if (hDark) hDark.innerHTML = config.headerLogoDark ? `<img src="${config.headerLogoDark}">` : '<i class="fas fa-image"></i>';
+  
+  const iLight = $('introLogoLightPrev');
+  if (iLight) iLight.innerHTML = config.introLogoLight ? `<img src="${config.introLogoLight}">` : '<i class="fas fa-image"></i>';
+  const iDark = $('introLogoDarkPrev');
+  if (iDark) iDark.innerHTML = config.introLogoDark ? `<img src="${config.introLogoDark}">` : '<i class="fas fa-image"></i>';
+}
+
+let themeAutoTimer = null;
+let themeMediaListener = null;
+
+function applyTheme(theme) {
+  const mode = theme || config.theme || 'auto';
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const hour = new Date().getHours();
+  const isNight = hour >= 18 || hour < 6; // 18:00–05:59 oscuro
+
+  let dark = false;
+  if (mode === 'dark') dark = true;
+  else if (mode === 'light') dark = false;
+  else dark = isNight || prefersDark;
+
+  document.body.classList.toggle('dark', dark);
+  document.body.setAttribute('data-theme', dark ? 'dark' : 'light');
+
+  const headerLogoEl = $('headerLogo');
+  const headerTitleEl = $('headerTitle');
+  const hLogo = dark
+    ? (config.headerLogoDark || config.headerLogoLight)
+    : (config.headerLogoLight || config.headerLogoDark);
+  if (headerLogoEl) {
+    if (hLogo) {
+      headerLogoEl.src = hLogo;
+      headerLogoEl.classList.remove('hidden');
+    } else {
+      headerLogoEl.removeAttribute('src');
+      headerLogoEl.classList.add('hidden');
+    }
+  }
+  if (headerTitleEl && config.appName) headerTitleEl.textContent = config.appName;
+
+  if (themeAutoTimer) { clearInterval(themeAutoTimer); themeAutoTimer = null; }
+  if (themeMediaListener) {
+    try { window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', themeMediaListener); } catch (_) {}
+    themeMediaListener = null;
+  }
+  if (mode === 'auto') {
+    themeAutoTimer = setInterval(() => {
+      if ((config.theme || 'auto') === 'auto') applyTheme('auto');
+    }, 60000);
+    themeMediaListener = () => {
+      if ((config.theme || 'auto') === 'auto') applyTheme('auto');
+    };
+    try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeMediaListener); } catch (_) {}
+  }
+}
+
+function updateSessionUI() {
+  const adminLogged = !!hasAdminAccess;
+  const asConsultant = !adminLogged && (
+    ($('consultantView') && $('consultantView').classList.contains('active')) ||
+    ($('shareDetailView') && $('shareDetailView').classList.contains('active'))
+  );
+  $('settingsBtn').classList.toggle('hidden', !adminLogged);
+  $('logoutBtn').classList.toggle('hidden', !(adminLogged || asConsultant));
+  $('userBadge').classList.toggle('hidden', !(adminLogged || asConsultant));
+  if (adminLogged) {
+    $('userBadge').classList.add('admin');
+    $('userName').textContent = isPrimaryAdmin ? 'Administrador' : 'Usuario';
+    $('userAvatar').textContent = $('userName').textContent.charAt(0).toUpperCase();
+  } else if (asConsultant) {
+    $('userBadge').classList.remove('admin');
+    $('userName').textContent = 'Consultor';
+    $('userAvatar').textContent = 'C';
+    $('settingsBtn').classList.add('hidden');
+  }
+}
+
+function restoreSessionFromStorage() {
+  const s = appSession.get();
+  if (!s || !s.role) return false;
+  if (s.unlocked && typeof s.unlocked === 'object') unlockedSharePasswords = s.unlocked;
+  faceSessionAuthed = !!s.faceSessionAuthed;
+  if (s.role === 'admin') {
+    isPrimaryAdmin = !!s.isPrimaryAdmin;
+    hasAdminAccess = true;
+    enterAdminView();
+    return true;
+  }
+  if (s.role === 'consultant') {
+    hasAdminAccess = false;
+    $('profileCarouselSection').style.display = 'none';
+    $('adminView').classList.remove('active');
+    if (s.detailShareId) {
+      const share = shares.find(x => x.id === s.detailShareId);
+      if (share && !isShareExpired(share) && unlockedSharePasswords[share.id] === String(share.password)) {
+        openDetailView(share);
+        updateSessionUI();
+        return true;
+      }
+    }
+    $('consultantView').classList.add('active');
+    $('shareDetailView').classList.remove('active');
+    renderConsultantView();
+    updateSessionUI();
+    return true;
+  }
+  return false;
+}
+
+function checkIntro() {
+  const overlay = $('introOverlay');
+  if (!overlay) return;
+
+  try {
+    // Si hay sesión abierta (consultor o admin), no mostrar intro
+    const sess = appSession.get();
+    if (sess && sess.role) {
+      overlay.classList.add('off');
+      overlay.classList.remove('pre-hidden', 'hidden');
+      return;
+    }
+
+    const hasLogoConfigured = !!(config.introLogoLight || config.introLogoDark);
+    const hasText = !!(config.introText && String(config.introText).trim());
+    const hasAppName = !!(config.appName && String(config.appName).trim());
+
+    // Si no hay logo, ni texto de intro, ni nombre de app → abrir directo
+    if (!hasLogoConfigured && !hasText && !hasAppName) {
+      overlay.classList.add('off');
+      overlay.classList.remove('pre-hidden', 'hidden');
+      return;
+    }
+
+    overlay.classList.remove('off', 'pre-hidden', 'hidden');
+    overlay.style.opacity = '1';
+    overlay.style.visibility = 'visible';
+
+    const logoImg = $('introLogo');
+    const textEl = $('introText');
+    const nameEl = $('introAppName');
+    const contentEl = $('introContent');
+    if (!logoImg || !textEl || !nameEl || !contentEl) {
+      overlay.classList.add('off');
+      return;
+    }
+
+    // Logo según el tema actual; si falta el del modo, usa el del otro como fallback
+    const isDark = document.body.getAttribute('data-theme') === 'dark';
+    const logoData = isDark
+      ? (config.introLogoDark || config.introLogoLight)
+      : (config.introLogoLight || config.introLogoDark);
+
+    // Reset visual
+    contentEl.style.display = '';
+    contentEl.style.opacity = '1';
+    nameEl.classList.remove('visible');
+    nameEl.style.display = 'none';
+    nameEl.textContent = config.appName || '';
+
+    if (logoData) {
+      logoImg.src = logoData;
+      logoImg.style.display = 'block';
+      logoImg.classList.remove('animate');
+      void logoImg.offsetWidth;
+      logoImg.classList.add('animate');
+    } else {
+      logoImg.removeAttribute('src');
+      logoImg.style.display = 'none';
+      logoImg.classList.remove('animate');
+    }
+
+    if (hasText) {
+      textEl.textContent = config.introText;
+      textEl.style.display = 'block';
+    } else {
+      textEl.textContent = '';
+      textEl.style.display = 'none';
+    }
+
+    const showLogoOrText = !!(logoData || hasText);
+    const tIntro = showLogoOrText ? Math.max(1, Number(config.introDuration) || 5) * 1000 : 0;
+    const tName = Math.max(1, Number(config.appNameDuration) || 2) * 1000;
+
+    // Seguridad: nunca dejar el overlay más de 20s
+    const hardLimit = setTimeout(() => {
+      try {
+        overlay.classList.add('hidden');
+        setTimeout(() => overlay.classList.add('off'), 700);
+      } catch (_) {}
+    }, 20000);
+
+    const finishIntro = () => {
+      clearTimeout(hardLimit);
+      overlay.classList.add('hidden');
+      setTimeout(() => {
+        overlay.classList.add('off');
+        contentEl.style.opacity = '1';
+        contentEl.style.display = '';
+      }, 700);
+    };
+
+    const showAppNamePhase = () => {
+      contentEl.style.display = 'none';
+      if (hasAppName) {
+        nameEl.style.display = 'block';
+        void nameEl.offsetWidth;
+        nameEl.classList.add('visible');
+        setTimeout(finishIntro, tName);
+      } else {
+        finishIntro();
+      }
+    };
+
+    if (!showLogoOrText) {
+      showAppNamePhase();
+      return;
+    }
+
+    setTimeout(() => {
+      contentEl.style.opacity = '0';
+      setTimeout(showAppNamePhase, 400);
+    }, tIntro);
+  } catch (err) {
+    console.warn('checkIntro error', err);
+    overlay.classList.add('hidden', 'off');
+  }
+}
+
+function buildCarousel() {
+  const container = $('carousel3d');
+  const dots = $('carouselDots');
+  container.innerHTML = ''; dots.innerHTML = '';
+  profiles.forEach((p, idx) => {
+    const card = document.createElement('div');
+    card.className = 'profile-card-3d';
+    card.style.transform = `rotateY(${idx * angleStep}deg) translateZ(280px)`;
+    card.innerHTML = `
+      <div class="card-icon" style="background:linear-gradient(135deg, ${p.color} 0%, ${p.colorEnd} 100%); box-shadow: var(--shadow-md);"><i class="fas ${p.icon}"></i></div>
+      <div class="card-title">${p.title}</div>
+      <div class="card-desc">${p.description}</div>
+      <div class="card-badge" style="background:linear-gradient(135deg, ${p.color}20, ${p.color}40); color:${p.color}; border:1px solid ${p.color}60;">${p.badge}</div>`;
+    card.addEventListener('click', () => selectProfile(p.id));
+    container.appendChild(card);
+    const dot = document.createElement('span');
+    dot.className = 'carousel-dot' + (idx === 0 ? ' active' : '');
+    dot.addEventListener('click', () => {
+      const currentIdx = ((activeCardIndex % profiles.length) + profiles.length) % profiles.length;
+      rotationAngle += (idx - currentIdx) * angleStep;
+      updateCarousel();
+    });
+    dots.appendChild(dot);
+  });
+  setTimeout(() => updateActiveCard(), 80);
+}
+function updateCarousel() {
+  if (isAnimating) return;
+  isAnimating = true;
+  document.querySelectorAll('.profile-card-3d').forEach((card, idx) => {
+    card.style.transform = `rotateY(${(idx * angleStep) + rotationAngle}deg) translateZ(280px)`;
+    card.style.transition = 'transform .55s cubic-bezier(.4,0,.2,1)';
+  });
+  setTimeout(() => { isAnimating = false; }, 560);
+  updateActiveCard();
+}
+function updateActiveCard() {
+  const cards = document.querySelectorAll('.profile-card-3d');
+  const dots = document.querySelectorAll('.carousel-dot');
+  cards.forEach(c => c.classList.remove('active-card'));
+  dots.forEach(d => d.classList.remove('active'));
+  let minAngle = Infinity, activeIndex = 0;
+  cards.forEach((card, idx) => {
+    let angle = Math.abs(((idx * angleStep + rotationAngle) % 360 + 360) % 360);
+    if (angle > 180) angle = 360 - angle;
+    if (angle < minAngle) { minAngle = angle; activeIndex = idx; }
+  });
+  activeCardIndex = activeIndex;
+  cards[activeIndex]?.classList.add('active-card');
+  dots[activeIndex]?.classList.add('active');
+}
+function rotateCarousel(step) { rotationAngle += step; updateCarousel(); }
+function selectProfile(profileId) {
+  const idx = profiles.findIndex(p => p.id === profileId);
+  if (idx === -1) return;
+  const currentIdx = ((activeCardIndex % profiles.length) + profiles.length) % profiles.length;
+  if (idx !== currentIdx) { rotationAngle += (idx - currentIdx) * angleStep; updateCarousel(); return; }
+  if (profileId === 'administrador') {
+    if (config.faces.length === 0) { $('firstFaceModal').classList.add('active'); return; }
+    openBiometricModal();
+  } else {
+    $('profileCarouselSection').style.display = 'none';
+    $('consultantView').classList.add('active');
+    $('adminView').classList.remove('active');
+    $('shareDetailView').classList.remove('active');
+    renderConsultantView();
+    hasAdminAccess = false;
+    updateSessionUI();
+    appSession.save();
+  }
+}
+function logoutToCarousel() {
+  hasAdminAccess = false; isPrimaryAdmin = false; faceSessionAuthed = false;
+  currentDetailShare = null;
+  unlockedSharePasswords = {};
+  appSession.clear();
+  closeDocViewer();
+  $('profileCarouselSection').style.display = '';
+  $('consultantView').classList.remove('active');
+  $('adminView').classList.remove('active');
+  $('shareDetailView').classList.remove('active');
+  rotationAngle = 0; updateCarousel();
+  updateSessionUI();
+}
+
+function isValidFaceTemplate(t) { return Array.isArray(t) && t.length === 128 && t.every(n => typeof n === 'number' && Number.isFinite(n)); }
+async function ensureFaceApi() {
+  if (faceApiReady) return true;
+  if (faceApiLoading) return faceApiLoading;
+  faceApiLoading = (async () => {
+    if (typeof faceapi === 'undefined') throw new Error('face-api.js no cargó');
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(FACE_API_MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_API_MODEL_URL)
+    ]);
+    faceApiReady = true; return true;
+  })();
+  try { return await faceApiLoading; } finally { faceApiLoading = null; }
+}
+function faceDescriptorDistance(a, b) {
+  if (!a || !b || a.length !== b.length) return 99;
+  let sum = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; sum += d*d; }
+  return Math.sqrt(sum);
+}
+function getFaceProfiles() { return (config.faces || []).filter(p => p && isValidFaceTemplate(p.descriptor)); }
+function findBestFaceMatch(descriptor) {
+  if (!isValidFaceTemplate(descriptor)) return null;
+  let best = null;
+  for (const p of getFaceProfiles()) {
+    const dist = faceDescriptorDistance(descriptor, p.descriptor);
+    if (!best || dist < best.dist) best = { profile: p, dist };
+  }
+  if (!best) return null;
+  return { ...best, matched: best.dist <= FACE_MATCH_THRESHOLD };
+}
+function faceCaptureThumb(video) {
+  try {
+    const c = document.createElement('canvas'); const size = 96; c.width = size; c.height = size;
+    const ctx = c.getContext('2d'); const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    const side = Math.min(vw, vh); const sx = (vw - side)/2, sy = (vh - side)/2;
+    ctx.translate(size, 0); ctx.scale(-1, 1);
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
+    return c.toDataURL('image/jpeg', 0.72);
+  } catch(e) { return null; }
+}
+async function detectFaceDescriptor(video) {
+  if (!video || video.readyState < 2) return null;
+  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 });
+  const det = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
+  if (!det || !det.descriptor) return null;
+  return Array.from(det.descriptor);
+}
+function stopFaceScanStream() {
+  if (faceRaf) { cancelAnimationFrame(faceRaf); faceRaf = null; }
+  if (faceStream) { try { faceStream.getTracks().forEach(t=>t.stop()); } catch(e){} faceStream = null; }
+  const v = $('faceScanVideo'); if (v) { try { v.srcObject = null; } catch(e){} }
+}
+function closeFaceScanOverlay(result) {
+  $('faceScanOverlay').classList.remove('visible');
+  stopFaceScanStream();
+  const r = faceScanResolve; faceScanResolve = null; faceScanMode = null;
+  faceMatchStreak = 0; faceFailStreak = 0;
+  if (r) r(result);
+}
+function openFaceScanOverlay(mode) {
+  return new Promise(async (resolve) => {
+    faceScanMode = mode; faceScanResolve = resolve;
+    faceMatchStreak = 0; faceFailStreak = 0;
+    const ov = $('faceScanOverlay'); const status = $('faceScanStatus');
+    $('faceScanTitle').textContent = mode === 'register' ? 'Registro facial' : 'Verificación facial';
+    ov.classList.add('visible');
+    const regName = ($('faceNameInput').value.trim()) || 'Usuario';
+    if (status) status.textContent = 'Cargando modelo…';
+    try {
+      await ensureFaceApi();
+      faceStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } });
+      const video = $('faceScanVideo');
+      video.srcObject = faceStream;
+      await new Promise(res => { if (video.readyState >= 2) return res(); video.onloadedmetadata = () => res(); });
+      await video.play();
+      if (status) status.textContent = mode === 'register' ? 'Detectando rostro…' : 'Buscando rostro…';
+      const samples = []; let lastDetectAt = 0; let registerFinished = false; let unlockFinished = false;
+      const loop = async () => {
+        if (!faceScanResolve || registerFinished || unlockFinished) return;
+        faceRaf = requestAnimationFrame(() => { loop(); });
+        const now = performance.now();
+        if (now - lastDetectAt < FACE_DETECT_INTERVAL_MS) return;
+        lastDetectAt = now;
+        try {
+          const desc = await detectFaceDescriptor(video);
+          if (!desc) { faceMatchStreak = 0; if (status) status.textContent = 'No se detecta rostro.'; return; }
+          if (mode === 'register') {
+            samples.push(desc);
+            if (status) status.textContent = `Capturando… ${samples.length}/${FACE_REGISTER_SAMPLES}`;
+            if (samples.length >= FACE_REGISTER_SAMPLES) {
+              registerFinished = true; if (faceRaf) cancelAnimationFrame(faceRaf);
+              const avg = new Array(128).fill(0);
+              for (const s of samples) for (let i = 0; i < 128; i++) avg[i] += s[i];
+              for (let i = 0; i < 128; i++) avg[i] /= samples.length;
+              const existing = findBestFaceMatch(avg);
+              if (existing && existing.matched) {
+                if (status) status.textContent = `Rostro ya registrado como ${existing.profile.name}.`;
+                setTimeout(() => closeFaceScanOverlay({ ok:false }), 2000);
+                return;
+              }
+              const profile = { id: 'face-' + Date.now(), name: regName, descriptor: avg, thumb: faceCaptureThumb(video), isPrimary: config.faces.length === 0, createdAt: new Date().toISOString() };
+              config.faces.push(profile); saveConfig(); renderFaceList();
+              if (status) status.textContent = 'Rostro registrado con éxito.';
+              setTimeout(() => closeFaceScanOverlay({ ok:true }), 1200);
+            }
+            return;
+          }
+          if (!getFaceProfiles().length) { if (status) status.textContent = 'No hay rostros registrados.'; return; }
+          const result = findBestFaceMatch(desc);
+          const frameEl = document.querySelector('.face-scan-frame');
+          if (result && result.matched) {
+            faceMatchStreak++; faceFailStreak = 0;
+            if (status) {
+              status.className = 'face-scan-status ok';
+              status.innerHTML = `<i class="fas fa-check-circle"></i> Rostro reconocido: <strong>${escapeHtml(result.profile.name)}</strong>`;
+            }
+            if (frameEl) { frameEl.classList.add('ok'); frameEl.classList.remove('deny'); }
+            if (faceMatchStreak >= FACE_MATCH_STREAK_NEED && !unlockFinished) {
+              unlockFinished = true; if (faceRaf) cancelAnimationFrame(faceRaf);
+              faceSessionAuthed = true;
+              isPrimaryAdmin = result.profile.isPrimary === true;
+              hasAdminAccess = isPrimaryAdmin || result.profile.canConfigure === true;
+              if (status) {
+                status.className = 'face-scan-status ok';
+                status.innerHTML = `<i class="fas fa-unlock"></i> Acceso permitido — ${escapeHtml(result.profile.name)}`;
+              }
+              setTimeout(() => closeFaceScanOverlay({ ok: true }), 1000);
+            }
+          } else {
+            faceMatchStreak = 0; faceFailStreak++;
+            if (faceFailStreak >= FACE_DENY_STREAK_NEED) {
+              if (status) {
+                status.className = 'face-scan-status deny';
+                status.innerHTML = `<i class="fas fa-lock"></i> Acceso denegado`;
+              }
+              if (frameEl) { frameEl.classList.add('deny'); frameEl.classList.remove('ok'); }
+              try {
+                const thumb = faceCaptureThumb(video);
+                if (thumb) {
+                  (async () => {
+                    const entry = cloudReady
+                      ? await cloudAddIntruder(thumb)
+                      : { id: 'local-' + Date.now(), image: thumb, timestamp: Date.now(), method: 'biometric' };
+                    if (!entry.method) entry.method = 'biometric';
+                    if (!entry.id) entry.id = 'local-' + Date.now();
+                    intruderLogs.unshift(entry);
+                    intruderLogs = intruderLogs.slice(0, 30);
+                    store.set('intruderLogs', intruderLogs);
+                    try { renderIntruderLogs(); } catch (_) {}
+                  })();
+                }
+              } catch(e) {}
+              setTimeout(() => closeFaceScanOverlay({ ok:false }), 1500);
+            } else {
+              if (status) {
+                status.className = 'face-scan-status warn';
+                status.textContent = 'Verificando…';
+              }
+              if (frameEl) { frameEl.classList.remove('ok', 'deny'); }
+            }
+          }
+        } catch(err) { console.warn(err); }
+      };
+      loop();
+    } catch(e) {
+      if (status) status.textContent = 'Error de cámara.';
+      setTimeout(() => closeFaceScanOverlay({ ok:false }), 1500);
+    }
+  });
+}
+async function openBiometricModal() {
+  if (config.cameraEnabled === false) { $('passwordModal').classList.add('active'); return; }
+  const res = await openFaceScanOverlay('unlock');
+  if (res && res.ok) enterAdminView();
+  else $('passwordModal').classList.add('active');
+}
+async function registerFirstFace() {
+  const name = $('firstFaceName').value.trim();
+  if (!name) { customAlert('Atención', 'Ingresa tu nombre'); return; }
+  $('firstFaceModal').classList.remove('active');
+  $('faceNameInput').value = name;
+  const res = await openFaceScanOverlay('register');
+  if (res && res.ok) { isPrimaryAdmin = true; hasAdminAccess = true; enterAdminView(); }
+}
+function enterAdminView() {
+  $('profileCarouselSection').style.display = 'none';
+  $('adminView').classList.add('active');
+  $('consultantView').classList.remove('active');
+  $('shareDetailView').classList.remove('active');
+  hasAdminAccess = true;
+  renderAdminView();
+  updateSessionUI();
+  appSession.save();
+}
+
+function renderConsultantView() {
+  const container = $('consultantRows');
+  container.innerHTML = '';
+  const active = shares.filter(s => s.expiry > Date.now());
+  if (active.length === 0) {
+    container.innerHTML = `<p style="text-align:center; padding:60px 0; color:var(--text-2);">No hay tarjetas compartidas.</p>`;
+    return;
+  }
+  const group = document.createElement('div');
+  group.className = 'tv-group';
+  group.innerHTML = `<div class="tv-group-header"><h3><i class="fas fa-folder-open"></i> Compartidas contigo <span class="count">(${active.length})</span></h3></div>`;
+  const scroll = document.createElement('div');
+  scroll.className = 'tv-row-scroll';
+  active.forEach((share, idx) => {
+    const card = document.createElement('div');
+    card.className = 'tv-card';
+    const hue = shareHue(share.name, idx);
+    card.style.background = `linear-gradient(145deg, hsl(${hue},65%,55%), hsl(${hue+40},65%,35%))`;
+    const hoursLeft = Math.floor((share.expiry - Date.now()) / 3600000);
+    card.innerHTML = `
+      <div class="badge-type">${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}</div>
+      <div class="badge-expiry ${hoursLeft < 24 ? 'urgent' : ''}"><i class="fas fa-clock"></i> ${hoursLeft < 24 ? hoursLeft+'h' : Math.floor(hoursLeft/24)+'d'}</div>
+      <div class="card-name">${escapeHtml(share.name)}</div>
+      <div class="card-meta"><span><i class="fas fa-file"></i> ${share.documents.length} docs</span></div>`;
+    card.addEventListener('click', () => openShareForConsultant(share));
+    tooltip.bind(card, () => buildShareTooltipHtml(share));
+    scroll.appendChild(card);
+  });
+  group.appendChild(scroll);
+  container.appendChild(group);
+  refreshDragScroll();
+}
+function openShareForConsultant(share) {
+  customPrompt('Acceso a tarjeta', `Ingresa la contraseña para "${share.name}":`).then(pwd => {
+    if (pwd === share.password) {
+      if (Date.now() > share.expiry) { customAlert('Expirada', 'Esta tarjeta ha caducado.'); return; }
+      unlockedSharePasswords[share.id] = String(pwd);
+      openDetailView(share);
+    } else if (pwd !== null) {
+      customAlert('Error', 'Contraseña incorrecta.', 'fa-times-circle');
+    }
+  });
+}
+function openDetailView(share) {
+  currentDetailShare = share;
+  currentDocsView = 'horizontal';
+  $('detailTitle').textContent = share.name;
+  $('detailSub').textContent = `${share.documents.length} documento(s) · ${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`;
+  $('downloadZipBtn').style.display = share.accessType === 'download' ? '' : 'none';
+  document.querySelectorAll('#viewSwitcher button').forEach(b => b.classList.toggle('active', b.dataset.view === 'horizontal'));
+  $('consultantView').classList.remove('active');
+  $('adminView').classList.remove('active');
+  $('shareDetailView').classList.add('active');
+  renderDetailBody();
+  appSession.save();
+}
+function closeDetailView() {
+  $('shareDetailView').classList.remove('active');
+  currentDetailShare = null;
+  if (hasAdminAccess) $('adminView').classList.add('active');
+  else $('consultantView').classList.add('active');
+  appSession.save();
+}
+function getFileTypeName(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'Imágenes';
+  if (['doc', 'docx'].includes(ext)) return 'Word';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'Excel';
+  if (['ppt', 'pptx'].includes(ext)) return 'PowerPoint';
+  if (ext === 'pdf') return 'PDF';
+  if (['zip', 'rar', '7z'].includes(ext)) return 'Comprimidos';
+  return 'Otros (' + ext.toUpperCase() + ')';
+}
+function getFileTypeClass(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  if (ext === 'pdf') return 'ftype-pdf';
+  if (['doc', 'docx'].includes(ext)) return 'ftype-word';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'ftype-excel';
+  if (['ppt', 'pptx'].includes(ext)) return 'ftype-ppt';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'ftype-img';
+  if (['zip', 'rar', '7z'].includes(ext)) return 'ftype-zip';
+  return 'ftype-other';
+}
+function getFileTintClass(filename) {
+  return getFileTypeClass(filename).replace('ftype-', 'tint-');
+}
+function getGroupHeaderClass(typeName) {
+  const map = {
+    'PDF': 'hdr-pdf', 'Word': 'hdr-word', 'Excel': 'hdr-excel',
+    'PowerPoint': 'hdr-ppt', 'Imágenes': 'hdr-img', 'Comprimidos': 'hdr-zip'
+  };
+  return map[typeName] || '';
+}
+/** Paleta fija bien separada + hash para nombres */
+const SHARE_HUES = [210, 145, 28, 280, 340, 190, 45, 310, 165, 5, 255, 85];
+function shareHue(name, index) {
+  if (typeof index === 'number' && index >= 0) {
+    return SHARE_HUES[index % SHARE_HUES.length];
+  }
+  let h = 0;
+  const s = String(name || '');
+  for (let i = 0; i < s.length; i++) h = (h * 37 + s.charCodeAt(i) * (i * 7 + 11)) >>> 0;
+  // Mapear a slots de la paleta para máxima separación
+  return SHARE_HUES[h % SHARE_HUES.length];
+}
+function renderDetailBody() {
+  const share = currentDetailShare;
+  if (!share) return;
+  const body = $('detailDocsBody');
+  body.innerHTML = '';
+  const docs = share.documents;
+  if (docs.length === 0) { body.innerHTML = '<p style="color:var(--text-3);">No hay documentos.</p>'; return; }
+  const groups = {};
+  docs.forEach(doc => {
+    const typeName = getFileTypeName(doc.name);
+    if (!groups[typeName]) groups[typeName] = [];
+    groups[typeName].push(doc);
+  });
+  const order = ['PDF', 'Word', 'Excel', 'PowerPoint', 'Imágenes', 'Comprimidos'];
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    let idxA = order.indexOf(a); let idxB = order.indexOf(b);
+    if (idxA === -1) idxA = 99; if (idxB === -1) idxB = 99;
+    return idxA - idxB;
+  });
+  sortedKeys.forEach(key => {
+    const groupDocs = groups[key];
+    const hdrClass = getGroupHeaderClass(key);
+    if (currentDocsView === 'horizontal') {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'tv-group';
+      groupEl.innerHTML = `<div class="tv-group-header ${hdrClass}"><h3>${key} <span class="count">(${groupDocs.length})</span></h3></div>`;
+      const rowScroll = document.createElement('div');
+      rowScroll.className = 'tv-row-scroll';
+      groupDocs.forEach(doc => rowScroll.appendChild(createDocCard(doc, share)));
+      groupEl.appendChild(rowScroll);
+      body.appendChild(groupEl);
+    } else if (currentDocsView === 'grid') {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'tv-group';
+      groupEl.innerHTML = `<div class="tv-group-header ${hdrClass}"><h3>${key} <span class="count">(${groupDocs.length})</span></h3></div>`;
+      const grid = document.createElement('div');
+      grid.className = 'tv-grid';
+      groupDocs.forEach(doc => grid.appendChild(createDocGridItem(doc, share)));
+      groupEl.appendChild(grid);
+      body.appendChild(groupEl);
+    } else {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'tv-group';
+      groupEl.innerHTML = `<div class="tv-group-header ${hdrClass}"><h3>${key} <span class="count">(${groupDocs.length})</span></h3></div>`;
+      const list = document.createElement('div');
+      list.className = 'tv-list';
+      groupDocs.forEach(doc => list.appendChild(createDocListItem(doc, share)));
+      groupEl.appendChild(list);
+      body.appendChild(groupEl);
+    }
+  });
+  refreshDragScroll();
+}
+
+function createDocCard(doc, share) {
+  const dc = document.createElement('div');
+  const typeClass = getFileTypeClass(doc.name);
+  const tint = getFileTintClass(doc.name);
+  dc.className = 'doc-card ' + tint;
+  const ext = doc.name.split('.').pop().toUpperCase().slice(0,4);
+  dc.innerHTML = `
+    <div class="doc-icon ${typeClass}">${ext}</div>
+    <div class="doc-name">${escapeHtml(doc.name)}</div>
+    <div class="doc-size">${(doc.size/1024).toFixed(1)} KB</div>`;
+  dc.addEventListener('click', () => openDocViewer(doc, share));
+  if (share && share.accessType === 'download') {
+    const dl = document.createElement('button');
+    dl.className = 'doc-dl';
+    dl.title = 'Descargar';
+    dl.innerHTML = '<i class="fas fa-download"></i>';
+    dl.onclick = (e) => { e.stopPropagation(); downloadSingleDoc(doc); };
+    dc.appendChild(dl);
+  }
+  tooltip.bind(dc, () => buildTooltipHtml(doc));
+  return dc;
+}
+function createDocGridItem(doc, share) {
+  const dc = document.createElement('div');
+  const typeClass = getFileTypeClass(doc.name);
+  const tint = getFileTintClass(doc.name);
+  dc.className = 'doc-grid-item ' + tint;
+  const ext = doc.name.split('.').pop().toUpperCase().slice(0,4);
+  dc.innerHTML = `
+    <div class="doc-icon ${typeClass}">${ext}</div>
+    <div class="doc-name">${escapeHtml(doc.name)}</div>
+    <div class="doc-size">${(doc.size/1024).toFixed(1)} KB</div>`;
+  dc.addEventListener('click', () => openDocViewer(doc, share));
+  if (share && share.accessType === 'download') {
+    const dl = document.createElement('button');
+    dl.className = 'doc-dl';
+    dl.title = 'Descargar';
+    dl.style.cssText = 'position:absolute;top:10px;right:10px;z-index:3;width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;font-size:.75rem;display:grid;place-items:center;opacity:0;transition:opacity .2s;';
+    dl.innerHTML = '<i class="fas fa-download"></i>';
+    dl.onclick = (e) => { e.stopPropagation(); downloadSingleDoc(doc); };
+    dc.appendChild(dl);
+    dc.addEventListener('mouseenter', () => dl.style.opacity = '1');
+    dc.addEventListener('mouseleave', () => dl.style.opacity = '0');
+  }
+  tooltip.bind(dc, () => buildTooltipHtml(doc));
+  return dc;
+}
+function createDocListItem(doc, share) {
+  const dc = document.createElement('div');
+  dc.className = 'doc-list-item';
+  const ext = doc.name.split('.').pop().toUpperCase().slice(0,4);
+  const typeClass = getFileTypeClass(doc.name);
+  dc.innerHTML = `
+    <div class="doc-icon ${typeClass}">${ext}</div>
+    <div class="doc-info"><div class="doc-name">${escapeHtml(doc.name)}</div><div class="doc-size">${(doc.size/1024).toFixed(1)} KB</div></div>
+    <div class="doc-actions"></div>`;
+  dc.addEventListener('click', () => openDocViewer(doc, share));
+  const actions = dc.querySelector('.doc-actions');
+  if (share.accessType === 'download') {
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'icon-btn';
+    dlBtn.innerHTML = '<i class="fas fa-download"></i>';
+    dlBtn.onclick = (e) => { e.stopPropagation(); downloadSingleDoc(doc); };
+    actions.appendChild(dlBtn);
+  }
+  tooltip.bind(dc, () => buildTooltipHtml(doc));
+  return dc;
+}
+
+function downloadSingleDoc(doc) {
+  const a = document.createElement('a');
+  a.href = doc.dataUrl; a.download = doc.name; a.click();
+}
+async function downloadAllAsZip() {
+  const share = currentDetailShare;
+  if (!share || share.documents.length === 0) return;
+  if (share.accessType !== 'download') { customAlert('Atención', 'Esta tarjeta es solo de visualización.'); return; }
+  if (typeof JSZip === 'undefined') { customAlert('Error', 'No se pudo cargar el generador de ZIP.'); return; }
+  const btn = $('downloadZipBtn');
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparando...';
+  try {
+    const zip = new JSZip();
+    for (const doc of share.documents) {
+      const src = doc.dataUrl || '';
+      if (String(src).startsWith('data:') && src.includes(',')) {
+        zip.file(doc.name, src.split(',')[1], { base64: true });
+      } else if (/^https?:\/\//i.test(src)) {
+        const res = await fetch(src);
+        const buf = await res.arrayBuffer();
+        zip.file(doc.name, buf);
+      }
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${share.name.replace(/[^a-zA-Z0-9-_]+/g, '_')}.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) {
+    console.warn(e);
+    customAlert('Error', 'Error al generar el ZIP.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+  }
+}
+
+let viewerState = { doc: null, share: null, objectUrl: null };
+function dataUrlToBlob(dataUrl) {
+  try {
+    const [meta, b64] = dataUrl.split(',');
+    const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  } catch(e) { return null; }
+}
+function closeDocViewer() {
+  const root = $('docViewerRoot');
+  root.classList.remove('active');
+  if (viewerState.objectUrl) { URL.revokeObjectURL(viewerState.objectUrl); viewerState.objectUrl = null; }
+  viewerState = { doc: null, share: null, objectUrl: null };
+}
+$('viewerCloseBtn').onclick = closeDocViewer;
+$('docViewerRoot').addEventListener('click', (e) => {
+  if (e.target === $('docViewerRoot')) closeDocViewer();
+});
+(function setupViewerChrome() {
+  const modal = document.querySelector('.doc-viewer-modal');
+  const root = $('docViewerRoot');
+  const sideBtn = $('viewerToggleSideBtn');
+  const maxBtn = $('viewerMaximizeBtn');
+  if (sideBtn) {
+    sideBtn.onclick = () => {
+      if (!modal) return;
+      modal.classList.toggle('side-collapsed');
+      const collapsed = modal.classList.contains('side-collapsed');
+      sideBtn.innerHTML = collapsed
+        ? '<i class="fas fa-panel-right"></i> Detalles'
+        : '<i class="fas fa-panel-right"></i> Ocultar';
+    };
+  }
+  if (maxBtn) {
+    maxBtn.onclick = () => {
+      if (!modal || !root) return;
+      const on = modal.classList.toggle('maximized');
+      root.classList.toggle('maximized', on);
+      maxBtn.innerHTML = on
+        ? '<i class="fas fa-compress"></i>'
+        : '<i class="fas fa-expand"></i>';
+      maxBtn.title = on ? 'Restaurar' : 'Maximizar';
+    };
+  }
+})();
+function openDocViewer(doc, share) {
+  if (!doc) return;
+  viewerState = { doc, share: share || null, objectUrl: null };
+  const root = $('docViewerRoot');
+  const stage = $('viewerStage');
+  const side = $('viewerSide');
+  const ext = doc.name.split('.').pop().toLowerCase();
+  const typeClass = getFileTypeClass(doc.name);
+  const extLabel = doc.name.split('.').pop().toUpperCase().slice(0,4);
+  $('viewerBadge').innerHTML = `<div class="file-badge ${typeClass}" style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:.75rem;letter-spacing:.4px;box-shadow:0 4px 12px rgba(0,0,0,.2), inset 0 -3px 0 rgba(0,0,0,.15);">${extLabel}</div>`;
+  $('viewerTitle').textContent = doc.name;
+  $('viewerSub').textContent = `${(doc.size/1024).toFixed(1)} KB · ${getFileTypeName(doc.name)}`;
+  const shareName = share?.name || 'Carga previa (sin compartir)';
+  const isViewOnly = share && share.accessType === 'view';
+  const accessTxt = isViewOnly ? 'Solo ver' : 'Ver y descargar';
+  // Acciones: un solo botón Descargar (header) cuando aplica; sin "abrir en pestaña"
+  side.innerHTML = `
+    <h5>Detalles</h5>
+    <dl class="kv">
+      <dt>Nombre</dt><dd>${escapeHtml(doc.name)}</dd>
+      <dt>Tipo</dt><dd>${getFileTypeName(doc.name)}</dd>
+      <dt>Formato</dt><dd class="mono">.${ext}</dd>
+      <dt>Tamaño</dt><dd>${(doc.size/1024).toFixed(1)} KB</dd>
+      <dt>Origen</dt><dd>${escapeHtml(shareName)}</dd>
+      <dt>Acceso</dt><dd>${accessTxt}</dd>
+    </dl>`;
+  const headerDl = $('viewerDlBtn');
+  if (headerDl) {
+    headerDl.style.display = isViewOnly ? 'none' : '';
+    headerDl.onclick = () => downloadSingleDoc(doc);
+  }
+  stage.innerHTML = '<div class="locked-state"><div><div class="e-icon"><i class="fas fa-spinner fa-spin"></i></div><div class="tiny">Cargando documento…</div></div></div>';
+  root.classList.add('active');
+  loadDocIntoStage(doc, ext, stage);
+}
+
+async function resolveDocBlob(doc) {
+  const src = doc && (doc.dataUrl || doc.url || '');
+  if (!src) return null;
+  if (String(src).startsWith('data:')) return dataUrlToBlob(src);
+  if (/^https?:\/\//i.test(src)) {
+    try {
+      const res = await fetch(src);
+      if (!res.ok) return null;
+      return await res.blob();
+    } catch (e) {
+      console.warn('fetch doc', e);
+      return null;
+    }
+  }
+  return null;
+}
+
+async function loadDocIntoStage(doc, ext, stage) {
+  const src = doc.dataUrl || doc.url || '';
+  const isHttp = /^https?:\/\//i.test(src);
+  let blob = null;
+  try { blob = await resolveDocBlob(doc); } catch (_) {}
+  const isOfficeExt = ['doc','docx','xls','xlsx','ppt','pptx','csv'].includes(ext);
+  const publicUrl = isHttp ? src : null;
+  if (['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext)) {
+    stage.innerHTML = `<img class="stage-img" src="${esc(src)}" alt="${escapeHtml(doc.name)}" draggable="false"/>`;
+    return;
+  }
+  if (isOfficeExt && publicUrl) {
+    const embed = 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(publicUrl);
+    stage.innerHTML = `
+      <div class="viewer-banner"><i class="fas fa-info-circle"></i><div><strong>Vista con formato Office</strong>Archivo hospedado en la URL pública. Se renderiza con el visor de Microsoft.</div></div>
+      <iframe class="office-frame" src="${embed}" title="${escapeHtml(doc.name)}"></iframe>`;
+    return;
+  }
+  if (ext === 'pdf' && blob && window.pdfjsLib) {
+    stage.innerHTML = '<div class="locked-state"><div><div class="e-icon"><i class="fas fa-spinner fa-spin"></i></div><div class="tiny">Renderizando PDF…</div></div></div>';
+    try {
+      const buf = await blob.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-canvas-wrap';
+      stage.innerHTML = '';
+      stage.appendChild(wrap);
+      const maxPages = Math.min(pdf.numPages, 50);
+      for (let i = 1; i <= maxPages; i++) {
+        const page = await pdf.getPage(i);
+        const vp = page.getViewport({ scale: 1.4 });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        wrap.appendChild(canvas);
+      }
+      if (pdf.numPages > maxPages) {
+        const note = document.createElement('div');
+        note.className = 'viewer-banner';
+        note.innerHTML = `<i class="fas fa-info-circle"></i><div>Mostrando las primeras ${maxPages} de ${pdf.numPages} páginas. Descarga el PDF para ver todo.</div>`;
+        stage.insertBefore(note, wrap);
+      }
+    } catch (err) {
+      console.warn('pdf.js error', err);
+      stage.innerHTML = `<iframe class="stage-frame" src="${doc.dataUrl}" title="${escapeHtml(doc.name)}"></iframe>`;
+    }
+    return;
+  }
+  if (ext === 'pdf') {
+    stage.innerHTML = `<iframe class="stage-frame" src="${doc.dataUrl}#toolbar=1" title="${escapeHtml(doc.name)}"></iframe>`;
+    return;
+  }
+  if (['doc','docx'].includes(ext) && blob) {
+    stage.innerHTML = '<div class="locked-state"><div><div class="e-icon"><i class="fas fa-spinner fa-spin"></i></div><div class="tiny">Renderizando Word…</div></div></div>';
+    if (window.mammoth && ext === 'docx') {
+      try {
+        const buf = await blob.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        if (result && result.value) {
+          stage.innerHTML = `<div class="paper">${result.value}</div>`;
+          return;
+        }
+      } catch (err) { console.warn('mammoth error', err); }
+    }
+    if (typeof docx !== 'undefined') {
+      try {
+        const container = document.createElement('div');
+        container.className = 'docx-wrapper';
+        stage.innerHTML = '';
+        stage.appendChild(container);
+        const buf = await blob.arrayBuffer();
+        await docx.renderAsync(buf, container);
+        return;
+      } catch (err) { console.warn('docx-preview error', err); }
+    }
+    stage.innerHTML = renderViewerFallback(doc, 'No se pudo previsualizar este documento Word. Descárgalo para verlo con formato completo.');
+    return;
+  }
+  if (['xls','xlsx','csv'].includes(ext) && blob && typeof XLSX !== 'undefined') {
+    stage.innerHTML = '<div class="locked-state"><div><div class="e-icon"><i class="fas fa-spinner fa-spin"></i></div><div class="tiny">Renderizando Excel…</div></div></div>';
+    try {
+      const buf = await blob.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const parts = [];
+      wb.SheetNames.forEach(name => {
+        const ws = wb.Sheets[name];
+        const html = XLSX.utils.sheet_to_html(ws, { editable: false });
+        parts.push(`<h3 style="font-family:var(--font);margin:16px 0 8px;">${escapeHtml(name)}</h3>${html}`);
+      });
+      stage.innerHTML = `<div class="paper" style="padding:24px 32px;max-width:1100px;">${parts.join('')}</div>`;
+      stage.querySelectorAll('table').forEach(t => t.classList.add('sheet-table'));
+      return;
+    } catch (err) { console.warn('SheetJS error', err); }
+    stage.innerHTML = renderViewerFallback(doc, 'No se pudo previsualizar esta hoja de cálculo.');
+    return;
+  }
+  if (['ppt','pptx'].includes(ext) && blob && window.JSZip) {
+    stage.innerHTML = '<div class="locked-state"><div><div class="e-icon"><i class="fas fa-spinner fa-spin"></i></div><div class="tiny">Renderizando PowerPoint…</div></div></div>';
+    try {
+      const buf = await blob.arrayBuffer();
+      const zip = await JSZip.loadAsync(buf);
+      const slideNames = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a,b) => {
+        const na = parseInt(a.match(/slide(\d+)/)[1]), nb = parseInt(b.match(/slide(\d+)/)[1]);
+        return na - nb;
+      });
+      if (!slideNames.length) { stage.innerHTML = renderViewerFallback(doc, 'No se encontraron diapositivas en el archivo.'); return; }
+      const slides = [];
+      for (let i = 0; i < slideNames.length; i++) {
+        const xml = await zip.files[slideNames[i]].async('string');
+        const texts = [];
+        const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
+        let m;
+        while ((m = re.exec(xml)) !== null) {
+          if (m[1] && m[1].trim()) texts.push(m[1].replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
+        }
+        slides.push({ n: i+1, texts });
+      }
+      const slideHtml = slides.map(s => `
+        <div style="background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.08);padding:28px 32px;margin:0 0 18px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Diapositiva ${s.n}</div>
+          ${s.texts.length ? s.texts.map((t, i) => i === 0
+            ? `<div style="font-size:1.6rem;font-weight:700;letter-spacing:-.02em;margin-bottom:14px;color:#1d1d1f;">${escapeHtml(t)}</div>`
+            : `<div style="font-size:.95rem;line-height:1.55;margin-bottom:8px;color:#333;">${escapeHtml(t)}</div>`
+          ).join('') : '<div style="color:var(--text-3);font-style:italic;">Diapositiva sin texto</div>'}
+        </div>`).join('');
+      stage.innerHTML = `<div style="max-width:820px;margin:0 auto;padding:8px 0;">${slideHtml}</div>`;
+      return;
+    } catch (err) { console.warn('pptx error', err); }
+    stage.innerHTML = renderViewerFallback(doc, 'No se pudo previsualizar el PowerPoint. Descárgalo para verlo con formato completo.');
+    return;
+  }
+  if (['txt','md','html','htm','json','xml','drawio','csv'].includes(ext) && blob) {
+    try {
+      const text = await blob.text();
+      if (ext === 'html' || ext === 'htm') stage.innerHTML = `<div class="paper">${text}</div>`;
+      else if (ext === 'json') {
+        let pretty = text;
+        try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch(e){}
+        stage.innerHTML = `<div class="paper" style="white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.6;">${escapeHtml(pretty)}</div>`;
+      } else if (ext === 'xml' || ext === 'drawio') {
+        stage.innerHTML = `<div class="paper" style="white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;">${escapeHtml(text)}</div>`;
+      } else {
+        stage.innerHTML = `<div class="paper" style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px;line-height:1.5;">${escapeHtml(text)}</div>`;
+      }
+      return;
+    } catch(e) { stage.innerHTML = renderViewerFallback(doc, 'No se pudo leer el archivo.'); return; }
+  }
+  stage.innerHTML = renderViewerFallback(doc, 'Vista previa no disponible para este formato.');
+}
+function renderViewerFallback(doc, msg) {
+  return `
+    <div class="locked-state">
+      <div>
+        <div class="e-icon"><i class="fas fa-file"></i></div>
+        <h3>${escapeHtml(doc.name)}</h3>
+        <p style="margin:8px 0 20px;max-width:420px;">${msg}</p>
+        <button class="btn btn-primary" onclick="downloadSingleDocByName('${escapeHtml(doc.name).replace(/'/g,"\\'")}')">
+          <i class="fas fa-download"></i> Descargar archivo
+        </button>
+      </div>
+    </div>`;
+}
+window.downloadSingleDocByName = function(name) {
+  if (viewerState.doc && viewerState.doc.name === name) downloadSingleDoc(viewerState.doc);
+  else if (currentDetailShare) {
+    const doc = currentDetailShare.documents.find(d => d.name === name);
+    if (doc) downloadSingleDoc(doc);
+  }
+};
+
+function renderAdminView() {
+  renderAdminRows();
+  renderUploadList();
+}
+function renderAdminRows() {
+  const container = $('adminRows');
+  container.innerHTML = '';
+  if (shares.length === 0) {
+    container.innerHTML = `<p style="text-align:center; padding:40px 0; color:var(--text-2);">Aún no has creado tarjetas.</p>`;
+    return;
+  }
+  const group = document.createElement('div');
+  group.className = 'tv-group';
+  group.innerHTML = `<div class="tv-group-header"><h3><i class="fas fa-layer-group"></i> Mis tarjetas <span class="count">(${shares.length})</span></h3></div>`;
+  const scroll = document.createElement('div');
+  scroll.className = 'tv-row-scroll';
+  shares.forEach((share, idx) => {
+    const card = document.createElement('div');
+    card.className = 'tv-card';
+    const hue = shareHue(share.name, idx);
+    card.style.background = `linear-gradient(145deg, hsl(${hue},65%,55%), hsl(${hue+40},65%,35%))`;
+    const hoursLeft = Math.floor((share.expiry - Date.now()) / 3600000);
+    card.innerHTML = `
+      <div class="badge-type">${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}</div>
+      <div class="badge-expiry ${hoursLeft < 24 ? 'urgent' : ''}"><i class="fas fa-clock"></i> ${hoursLeft < 0 ? 'Exp' : (hoursLeft < 24 ? hoursLeft+'h' : Math.floor(hoursLeft/24)+'d')}</div>
+      <div class="card-name">${escapeHtml(share.name)}</div>
+      <div class="card-meta"><span><i class="fas fa-file"></i> ${share.documents.length} docs</span></div>`;
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.admin-actions')) return;
+      openDetailView(share);
+    });
+    const actions = document.createElement('div');
+    actions.className = 'admin-actions';
+    actions.innerHTML = `
+      <button class="icon-btn" title="Editar" onclick="event.stopPropagation(); openEditShareModal('${share.id}')"><i class="fas fa-pen"></i></button>
+      <button class="icon-btn" data-del title="Eliminar" onclick="event.stopPropagation(); deleteShare('${share.id}')"><i class="fas fa-trash"></i></button>`;
+    card.appendChild(actions);
+    tooltip.bind(card, () => buildShareTooltipHtml(share));
+    scroll.appendChild(card);
+  });
+  group.appendChild(scroll);
+  container.appendChild(group);
+  refreshDragScroll();
+}
+async function deleteShare(id) {
+  const ok = await customConfirm('Eliminar tarjeta', '¿Estás seguro de que deseas eliminar esta tarjeta permanentemente?', true);
+  if (!ok) return;
+  try {
+    tooltip.hide();
+    if (cloudReady) await cloudDeleteShare(id);
+    shares = shares.filter(s => s.id !== id);
+    store.set('shares', shares);
+    // Si alguien la tenía abierta, expulsar
+    if (currentDetailShare && currentDetailShare.id === id) {
+      currentDetailShare = null;
+      const detail = $('detailView');
+      if (detail) detail.classList.remove('active');
+      if ($('consultantView')) $('consultantView').classList.add('active');
+      closeDocViewer();
+    }
+    if (viewerState && viewerState.share && viewerState.share.id === id) closeDocViewer();
+    renderAdminRows();
+    renderConsultantView();
+    showToast('Tarjeta eliminada', 'fa-trash');
+  } catch (e) {
+    console.warn(e);
+    customAlert('Error', 'No se pudo eliminar en la nube. Revisa la conexión.');
+  }
+}
+
+function renderUploadList() {
+  const list = $('uploadFileList');
+  list.innerHTML = '';
+  document.querySelectorAll('#uploadViewSwitcher button').forEach(b => b.classList.toggle('active', b.dataset.uploadView === currentUploadView));
+  if (selectedFiles.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-3);font-size:13px;text-align:center;padding:8px;">No hay archivos seleccionados</p>';
+    $('shareFilesBtn').disabled = true;
+    return;
+  }
+  $('shareFilesBtn').disabled = false;
+  const groups = {};
+  selectedFiles.forEach(file => {
+    const typeName = getFileTypeName(file.name);
+    if (!groups[typeName]) groups[typeName] = [];
+    groups[typeName].push(file);
+  });
+  const order = ['PDF', 'Word', 'Excel', 'PowerPoint', 'Imágenes', 'Comprimidos'];
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    let idxA = order.indexOf(a); let idxB = order.indexOf(b);
+    if (idxA === -1) idxA = 99; if (idxB === -1) idxB = 99;
+    return idxA - idxB;
+  });
+  sortedKeys.forEach(key => {
+    const groupDocs = groups[key];
+    const groupEl = document.createElement('div');
+    groupEl.className = 'tv-group';
+    groupEl.innerHTML = `<div class="tv-group-header"><h3>${key} <span class="count">(${groupDocs.length})</span></h3></div>`;
+    const container = document.createElement('div');
+    if (currentUploadView === 'horizontal') container.className = 'tv-row-scroll';
+    else if (currentUploadView === 'grid') container.className = 'tv-grid';
+    else container.className = 'tv-list';
+    if (currentUploadView === 'horizontal') container.style.padding = '4px 0';
+    groupDocs.forEach(f => {
+      container.appendChild(createUploadCard(f, key));
+    });
+    groupEl.appendChild(container);
+    list.appendChild(groupEl);
+  });
+  refreshDragScroll();
+}
+
+function createUploadCard(file, groupKey) {
+  const originalIndex = selectedFiles.indexOf(file);
+  const ext = file.name.split('.').pop().toUpperCase().slice(0,4);
+  const typeClass = getFileTypeClass(file.name);
+  const sizeStr = (file.size/1024).toFixed(1) + ' KB';
+  const fakeDoc = () => ({ name: file.name, dataUrl: null, size: file.size, lastModified: file.lastModified });
+  const removeBtn = (bg = 'var(--danger)') => {
+    const b = document.createElement('button');
+    b.className = 'doc-dl';
+    b.style.background = bg;
+    b.title = 'Quitar';
+    b.innerHTML = '<i class="fas fa-times"></i>';
+    b.onclick = (e) => { e.stopPropagation(); tooltip.hide(); selectedFiles.splice(originalIndex, 1); renderUploadList(); };
+    return b;
+  };
+  if (currentUploadView === 'list') {
+    const dc = document.createElement('div');
+    dc.className = 'doc-list-item';
+    dc.innerHTML = `
+      <div class="doc-icon ${typeClass}">${ext}</div>
+      <div class="doc-info"><div class="doc-name">${escapeHtml(file.name)}</div><div class="doc-size">${sizeStr}</div></div>
+      <div class="doc-actions"></div>`;
+    const actions = dc.querySelector('.doc-actions');
+    const rm = document.createElement('button');
+    rm.className = 'icon-btn';
+    rm.innerHTML = '<i class="fas fa-times" style="color:var(--danger)"></i>';
+    rm.title = 'Quitar';
+    rm.onclick = (e) => { e.stopPropagation(); tooltip.hide(); selectedFiles.splice(originalIndex, 1); renderUploadList(); };
+    actions.appendChild(rm);
+    dc.addEventListener('click', async () => {
+      const doc = await fileToPreviewDoc(file);
+      openDocViewer(doc, null);
+    });
+    tooltip.bind(dc, () => buildTooltipHtml({ ...fakeDoc(), name: file.name, size: file.size, lastModified: file.lastModified }));
+    return dc;
+  }
+  const dc = document.createElement('div');
+  const tint = getFileTintClass(file.name);
+  dc.className = (currentUploadView === 'grid' ? 'doc-grid-item ' : 'doc-card ') + tint;
+  dc.innerHTML = `
+    <div class="doc-icon ${typeClass}">${ext}</div>
+    <div class="doc-name">${escapeHtml(file.name)}</div>
+    <div class="doc-size">${sizeStr}</div>`;
+  dc.appendChild(removeBtn());
+  dc.addEventListener('click', async () => {
+    const doc = await fileToPreviewDoc(file);
+    openDocViewer(doc, null);
+  });
+  tooltip.bind(dc, () => buildTooltipHtml({ ...fakeDoc(), name: file.name, size: file.size, lastModified: file.lastModified }));
+  return dc;
+}
+
+function fileToPreviewDoc(file) {
+  return new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = (e) => resolve({ name: file.name, dataUrl: e.target.result, size: file.size, lastModified: file.lastModified });
+    r.readAsDataURL(file);
+  });
+}
+
+function openCreateShareModal() {
+  if (selectedFiles.length === 0) return;
+  editingShareId = null;
+  tempEditDocs = [];
+  $('shareModalTitle').innerHTML = '<i class="fas fa-share-nodes"></i> Crear tarjeta';
+  $('shareName').value = '';
+  $('shareName').classList.remove('invalid');
+  $('nameLockIcon').style.display = 'none';
+  $('nameStatusIcon').classList.remove('show');
+  $('sharePassword').value = '';
+  $('shareExpiry').value = '24';
+  $('shareExpiryUnit').value = 'hours';
+  $('shareAccessType').value = 'download';
+  $('editDocsSection').classList.add('hidden');
+  $('shareModal').classList.add('active');
+  setTimeout(() => $('shareName').focus(), 100);
+}
+window.openEditShareModal = function(id) {
+  const share = shares.find(s => s.id === id);
+  if (!share) return;
+  editingShareId = id;
+  tempEditDocs = [...share.documents];
+  $('shareModalTitle').innerHTML = '<i class="fas fa-pen"></i> Editar tarjeta';
+  $('shareName').value = share.name;
+  $('shareName').classList.remove('invalid');
+  $('nameLockIcon').style.display = 'none';
+  $('nameStatusIcon').classList.remove('show');
+  $('sharePassword').value = share.password;
+  const hoursLeft = Math.max(1, Math.floor((share.expiry - Date.now()) / 3600000));
+  $('shareExpiry').value = hoursLeft;
+  $('shareExpiryUnit').value = 'hours';
+  $('shareAccessType').value = share.accessType;
+  $('editDocsSection').classList.remove('hidden');
+  renderTempDocsList();
+  $('shareModal').classList.add('active');
+};
+$('shareName').addEventListener('input', function() {
+  const name = this.value.trim().toLowerCase();
+  if (!name) {
+    $('nameLockIcon').style.display = 'none';
+    $('nameStatusIcon').classList.remove('show');
+    this.classList.remove('invalid');
+    return;
+  }
+  const exists = shares.some(s => s.name.toLowerCase() === name && s.id !== editingShareId);
+  if (exists) {
+    $('nameLockIcon').style.display = 'inline';
+    $('nameStatusIcon').classList.remove('show');
+    this.classList.add('invalid');
+  } else {
+    $('nameLockIcon').style.display = 'none';
+    $('nameStatusIcon').classList.add('show');
+    this.classList.remove('invalid');
+  }
+});
+function renderTempDocsList() {
+  const list = $('editDocList');
+  list.innerHTML = '';
+  tempEditDocs.forEach((doc, i) => {
+    const item = document.createElement('div');
+    item.className = 'edit-doc-item';
+    item.innerHTML = `<span>${escapeHtml(doc.name)}</span><button class="icon-btn" style="width:24px;height:24px;color:var(--danger);" onclick="removeTempDoc(${i})"><i class="fas fa-times"></i></button>`;
+    list.appendChild(item);
+  });
+}
+window.removeTempDoc = function(index) {
+  tempEditDocs.splice(index, 1);
+  renderTempDocsList();
+};
+
+async function resolveDuplicatesInSelectedFiles() {
+  const toRemove = new Set();
+  for (let i = 0; i < selectedFiles.length; i++) {
+    if (toRemove.has(i)) continue;
+    const current = selectedFiles[i];
+    let dupIdx = -1;
+    for (let j = 0; j < i; j++) {
+      if (toRemove.has(j)) continue;
+      if (String(selectedFiles[j].name).toLowerCase() === String(current.name).toLowerCase()) { dupIdx = j; break; }
+    }
+    if (dupIdx === -1) continue;
+    const others = selectedFiles.filter((_, k) => k !== i);
+    const { ok, nextName } = await askDuplicate(current.name, others);
+    if (ok) {
+      const renamed = new File([current], nextName, { type: current.type, lastModified: current.lastModified });
+      selectedFiles[i] = renamed;
+    } else {
+      toRemove.add(i);
+    }
+  }
+  if (toRemove.size) {
+    selectedFiles = selectedFiles.filter((_, i) => !toRemove.has(i));
+    renderUploadList();
+  } else if (Array.from(toRemove).length) {
+    renderUploadList();
+  }
+  return !toRemove.size ? true : selectedFiles.length > 0;
+}
+
+function openShareInviteEmail(share) {
+  if (!share) return;
+  const appName = (config && config.appName) || 'FileShare';
+  const expDate = new Date(share.expiry).toLocaleString('es-MX');
+  const access = share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar';
+  const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
+  const pageUrl = location.href.split('#')[0];
+  const subject = encodeURIComponent(`${appName}: documentos compartidos «${share.name}»`);
+  const body = encodeURIComponent(
+    `Hola,\n\n` +
+    `Se ha compartido contigo la tarjeta «${share.name}» en ${appName}.\n\n` +
+    `Cómo acceder:\n` +
+    `1. Abre la aplicación: ${pageUrl}\n` +
+    `2. Entra como Consultor\n` +
+    `3. Abre la tarjeta «${share.name}»\n` +
+    `4. Contraseña: ${share.password}\n\n` +
+    `Tipo de acceso: ${access}\n` +
+    `Vigencia hasta: ${expDate}\n\n` +
+    `Documentos:\n${docs}\n\n` +
+    `— Enviado desde ${appName}`
+  );
+  // mailto sin destinatario fijo: el admin elige a quién enviarlo
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+async function confirmShare() {
+  const name = $('shareName').value.trim();
+  const password = $('sharePassword').value.trim();
+  const expiryAmount = parseInt($('shareExpiry').value) || 24;
+  const expiryUnit = $('shareExpiryUnit').value;
+  const accessType = $('shareAccessType').value;
+  if (!name) { customAlert('Atención', 'Ingresa un nombre para la tarjeta'); return; }
+  const exists = shares.some(s => s.name.toLowerCase() === name.toLowerCase() && s.id !== editingShareId);
+  if (exists) { customAlert('Bloqueado', 'Ya existe una tarjeta con ese nombre. Cambia el nombre para continuar.', 'fa-lock'); return; }
+  if (!password) { customAlert('Atención', 'Ingresa una contraseña'); return; }
+  const hours = expiryUnit === 'days' ? expiryAmount * 24 : expiryAmount;
+  const expiry = Date.now() + hours * 60 * 60 * 1000;
+  const btn = $('confirmShareBtn');
+  if (btn) btn.disabled = true;
+
+  try {
+    if (editingShareId) {
+      const share = shares.find(s => s.id === editingShareId);
+      if (!share) return;
+      const toRemove = new Set();
+      for (let i = 0; i < tempEditDocs.length; i++) {
+        if (toRemove.has(i)) continue;
+        const current = tempEditDocs[i];
+        let dupIdx = -1;
+        for (let j = 0; j < i; j++) {
+          if (toRemove.has(j)) continue;
+          if (String(tempEditDocs[j].name).toLowerCase() === String(current.name).toLowerCase()) { dupIdx = j; break; }
+        }
+        if (dupIdx === -1) continue;
+        const others = tempEditDocs.filter((_, k) => k !== i);
+        const { ok, nextName } = await askDuplicate(current.name, others);
+        if (ok) tempEditDocs[i] = { ...current, name: nextName };
+        else toRemove.add(i);
+      }
+      const finalDocs = tempEditDocs.filter((_, i) => !toRemove.has(i));
+      share.name = name;
+      share.password = password;
+      share.accessType = accessType;
+      share.expiry = expiry;
+      share.documents = finalDocs;
+      if (cloudReady) {
+        await cloudUpsertShare(share);
+      } else {
+        showToast('Tarjeta actualizada', 'fa-check');
+      }
+      store.set('shares', shares);
+    } else {
+      if (selectedFiles.length === 0) { customAlert('Atención', 'No hay archivos seleccionados'); return; }
+      await resolveDuplicatesInSelectedFiles();
+      if (selectedFiles.length === 0) {
+        customAlert('Atención', 'Todos los archivos fueron descartados por ser duplicados.');
+        return;
+      }
+      const documents = [];
+      for (const file of selectedFiles) {
+        const dataUrl = await fileToDataUrl(file);
+        documents.push({ name: file.name, dataUrl, size: file.size, mimeType: file.type });
+      }
+      let share = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name, password, accessType, expiry, createdAt: Date.now(), documents
+      };
+      if (cloudReady) {
+        share = await cloudUpsertShare(share);
+      }
+      shares.unshift(share);
+      store.set('shares', shares);
+      selectedFiles = [];
+      renderUploadList();
+      if (!cloudReady) showToast('Tarjeta creada', 'fa-check');
+      // Abrir cliente de correo con los datos de la compartición para el consultor
+      openShareInviteEmail(share);
+    }
+    tooltip.hide();
+    renderAdminRows();
+    renderConsultantView();
+    $('shareModal').classList.remove('active');
+  } catch (e) {
+    console.warn(e);
+    hideUploadProgress();
+    customAlert('Error', 'No se pudo guardar en la nube. ' + (e.message || ''));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+function fileToDataUrl(file) {
+  return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(file); });
+}
+
+function renderFaceList() {
+  const list = $('faceProfilesList');
+  const status = $('faceRegStatus');
+  const faces = config.faces || [];
+  if (status) status.textContent = faces.length ? `${faces.length} rostro(s) registrado(s)` : 'Sin rostros registrados';
+  list.innerHTML = '';
+  faces.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'face-profile-row';
+    row.innerHTML = `
+      <img src="${p.thumb || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><circle cx=%2218%22 cy=%2218%22 r=%2218%22 fill=%22%230071e3%22/></svg>'}" alt="">
+      <div class="face-profile-name">${escapeHtml(p.name)}${p.isPrimary?' (Principal)':''}</div>
+      <button class="icon-btn" style="width:26px;height:26px;color:var(--danger);" onclick="removeFaceProfile('${p.id}')"><i class="fas fa-trash"></i></button>`;
+    list.appendChild(row);
+  });
+}
+window.removeFaceProfile = async function(id) {
+  const ok = await customConfirm('Eliminar rostro', '¿Eliminar este rostro?');
+  if (ok) {
+    config.faces = config.faces.filter(x => x.id !== id);
+    if (config.faces.length > 0 && !config.faces.some(f => f.isPrimary)) config.faces[0].isPrimary = true;
+    saveConfig(true);
+    renderFaceList();
+  }
+};
+function renderIntruderLogs() {
+  const log = $('intruderLog');
+  if (!log) return;
+  log.innerHTML = '';
+  if (!intruderLogs.length) {
+    log.innerHTML = '<p style="color:var(--text-3);font-size:13px;">Sin intentos registrados.</p>';
+    return;
+  }
+  intruderLogs.forEach((entry, idx) => {
+    const item = document.createElement('div');
+    item.className = 'intruder-item';
+    item.style.cssText = 'display:flex; align-items:center; gap:10px; background:var(--bg-elev); padding:8px 10px; border-radius:10px;';
+    const method = entry.method === 'password' ? 'Contraseña' : 'Biométrico';
+    const img = entry.image
+      ? `<img src="${entry.image}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+      : `<div style="width:40px;height:40px;border-radius:50%;background:var(--danger-soft);display:grid;place-items:center;color:var(--danger);flex-shrink:0;"><i class="fas fa-user-secret"></i></div>`;
+    item.innerHTML = `
+      ${img}
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:600;">${new Date(entry.timestamp || Date.now()).toLocaleString('es-MX')}</div>
+        <div style="font-size:11px;color:var(--danger);">Acceso denegado · ${method}</div>
+      </div>
+      <button class="icon-btn" title="Eliminar" data-intruder-idx="${idx}" style="color:var(--danger);width:28px;height:28px;flex-shrink:0;">
+        <i class="fas fa-trash"></i>
+      </button>`;
+    const delBtn = item.querySelector('[data-intruder-idx]');
+    if (delBtn) {
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const i = parseInt(delBtn.getAttribute('data-intruder-idx'), 10);
+        const entry2 = intruderLogs[i];
+        if (cloudReady && entry2 && entry2.id && !String(entry2.id).startsWith('local-')) {
+          try { await sb.from('intruder_logs').delete().eq('id', entry2.id); } catch (_) {}
+        }
+        intruderLogs.splice(i, 1);
+        store.set('intruderLogs', intruderLogs);
+        renderIntruderLogs();
+        showToast('Registro eliminado', 'fa-trash');
+      };
+    }
+    log.appendChild(item);
+  });
+}
+
+window.clearAllIntruders = async function() {
+  const ok = await customConfirm('Eliminar registros', '¿Eliminar TODOS los accesos denegados?', true);
+  if (!ok) return;
+  if (cloudReady) {
+    try { await sb.from('intruder_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (_) {}
+  }
+  intruderLogs = [];
+  store.set('intruderLogs', intruderLogs);
+  renderIntruderLogs();
+  showToast('Registros eliminados', 'fa-trash');
+};
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Funciones globales para borrar logos
+window.removeHeaderLogo = (mode) => {
+  if (mode === 'light') config.headerLogoLight = null;
+  if (mode === 'dark') config.headerLogoDark = null;
+  saveConfig(true);
+  applyConfig();
+};
+window.removeIntroLogo = (mode) => {
+  if (mode === 'light') config.introLogoLight = null;
+  if (mode === 'dark') config.introLogoDark = null;
+  saveConfig(true);
+  applyConfig();
+};
+
+function setupEventListeners() {
+  // File inputs para logos (comprimidos + persistentes)
+  const bindLogoUpload = (inputId, key, maxSide = 512) => {
+    const el = $(inputId);
+    if (!el) return;
+    el.onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try {
+        showToast('Procesando imagen…', 'fa-spinner fa-spin');
+        const dataUrl = await compressImageToDataUrl(f, maxSide, 0.85);
+        config[key] = dataUrl;
+        if (saveConfig()) {
+          applyConfig();
+          showToast('Logo guardado');
+        }
+      } catch (err) {
+        console.warn(err);
+        showToast('No se pudo cargar la imagen', 'fa-times-circle');
+      }
+      e.target.value = '';
+    };
+  };
+  // Logos de encabezado: más pequeños
+  bindLogoUpload('headerLogoLightInput', 'headerLogoLight', 256);
+  bindLogoUpload('headerLogoDarkInput', 'headerLogoDark', 256);
+  // Logos de intro: un poco más grandes
+  bindLogoUpload('introLogoLightInput', 'introLogoLight', 640);
+  bindLogoUpload('introLogoDarkInput', 'introLogoDark', 640);
+
+  $('headerHomeBtn').onclick = () => {
+    if (hasAdminAccess) { $('adminView').classList.add('active'); $('consultantView').classList.remove('active'); $('shareDetailView').classList.remove('active'); }
+    else { $('consultantView').classList.remove('active'); $('adminView').classList.remove('active'); $('shareDetailView').classList.remove('active'); $('profileCarouselSection').style.display = ''; }
+  };
+  $('carouselPrev').onclick = () => rotateCarousel(-angleStep);
+  $('carouselNext').onclick = () => rotateCarousel(angleStep);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('docViewerRoot').classList.contains('active')) { closeDocViewer(); return; }
+    if ($('profileCarouselSection').style.display === 'none') return;
+    if (document.querySelector('.modal-overlay.active')) return;
+    if (e.key === 'ArrowLeft') rotateCarousel(-angleStep);
+    if (e.key === 'ArrowRight') rotateCarousel(angleStep);
+  });
+  $('backToRowsBtn').onclick = closeDetailView;
+  $('settingsBtn').onclick = () => {
+    $('settingsModal').classList.add('active');
+    renderFaceList(); renderIntruderLogs();
+  };
+  $('closeSettingsBtn').onclick = () => {
+    // Guardar todo al cerrar por si quedó algo pendiente
+    saveConfig();
+    $('settingsModal').classList.remove('active');
+  };
+  document.querySelectorAll('#settingsNav button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#settingsNav button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('#settingsPanel [data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== btn.dataset.section));
+    };
+  });
+
+  // Nombre de la app + apariencia
+  const bindTextSave = (id, key, apply = true) => {
+    const el = $(id);
+    if (!el) return;
+    const save = () => {
+      config[key] = el.value;
+      saveConfig();
+      if (apply) applyConfig();
+    };
+    el.addEventListener('change', save);
+    el.addEventListener('blur', save);
+  };
+  bindTextSave('appNameInput', 'appName', true);
+  bindTextSave('introTextInput', 'introText', false);
+
+  $('accentColorInput').oninput = (e) => {
+    config.accentColor = e.target.value;
+    applyAccentColor(config.accentColor);
+    saveConfig();
+  };
+  $('themeSelect').onchange = (e) => {
+    config.theme = e.target.value;
+    saveConfig();
+    applyTheme(config.theme);
+    applyAccentColor(config.accentColor); // mantener acento en claro/oscuro
+  };
+
+  // Tamaños (sliders) — guardan en cada movimiento
+  const bindSize = (inputId, valId, key) => {
+    const input = $(inputId);
+    const val = $(valId);
+    if (!input) return;
+    input.oninput = () => {
+      const n = parseInt(input.value, 10);
+      if (!Number.isFinite(n)) return;
+      config[key] = n;
+      if (val) val.textContent = n + 'px';
+      // Aplica CSS en vivo
+      if (key === 'headerLogoSize') document.documentElement.style.setProperty('--header-logo-size', n + 'px');
+      if (key === 'headerTitleSize') document.documentElement.style.setProperty('--header-title-size', n + 'px');
+      if (key === 'introLogoSize') document.documentElement.style.setProperty('--intro-logo-size', n + 'px');
+      if (key === 'introTextSize') document.documentElement.style.setProperty('--intro-text-size', n + 'px');
+      if (key === 'introAppNameSize') document.documentElement.style.setProperty('--intro-appname-size', n + 'px');
+      if (key === 'headerLogoSize') {
+        const navH = Math.max(64, n + 24);
+        document.documentElement.style.setProperty('--nav-h', navH + 'px');
+      }
+      saveConfig();
+    };
+    input.onchange = () => saveConfig();
+  };
+  bindSize('headerLogoSizeInput', 'headerLogoSizeVal', 'headerLogoSize');
+  bindSize('headerTitleSizeInput', 'headerTitleSizeVal', 'headerTitleSize');
+  bindSize('introLogoSizeInput', 'introLogoSizeVal', 'introLogoSize');
+  bindSize('introTextSizeInput', 'introTextSizeVal', 'introTextSize');
+  bindSize('introAppNameSizeInput', 'introAppNameSizeVal', 'introAppNameSize');
+
+  // Duraciones del intro
+  const bindNumber = (id, key) => {
+    const el = $(id);
+    if (!el) return;
+    const save = () => {
+      const n = parseInt(el.value, 10);
+      if (Number.isFinite(n) && n >= 1) {
+        config[key] = n;
+        saveConfig();
+      }
+    };
+    el.addEventListener('change', save);
+    el.addEventListener('blur', save);
+  };
+  bindNumber('introDurationInput', 'introDuration');
+  bindNumber('appNameDurationInput', 'appNameDuration');
+
+  $('savePasswordBtn').onclick = () => {
+    config.backupPassword = $('backupPasswordInput').value;
+    saveConfig(true);
+  };
+  const camEl = $('cameraToggle');
+  if (camEl) camEl.onchange = (e) => {
+    config.cameraEnabled = e.target.checked;
+    saveConfig();
+  };
+  $('logoutBtn').onclick = async () => {
+    if (await customConfirm('Cerrar sesión', '¿Deseas salir?')) logoutToCarousel();
+  };
+  $('registerFaceBtn').onclick = async () => {
+    const name = $('faceNameInput').value.trim();
+    if (!name) { customAlert('Atención', 'Ingresa un nombre'); return; }
+    if (!config.cameraEnabled) { customAlert('Atención', 'Activa la cámara en configuración.'); return; }
+    const res = await openFaceScanOverlay('register');
+    if (res && res.ok) { $('faceNameInput').value = ''; renderFaceList(); }
+  };
+  $('clearFacesBtn').onclick = async () => {
+    if (await customConfirm('Eliminar rostros', '¿Eliminar TODOS los rostros?', true)) {
+      config.faces = []; saveConfig(true); renderFaceList();
+    }
+  };
+  $('cancelShareBtn').onclick = () => $('shareModal').classList.remove('active');
+  $('confirmShareBtn').onclick = confirmShare;
+
+  document.querySelectorAll('#uploadViewSwitcher button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#uploadViewSwitcher button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentUploadView = btn.dataset.uploadView;
+      renderUploadList();
+    };
+  });
+
+  const editDz = $('editDropZone');
+  const editFi = $('editFileInput');
+  editDz.onclick = () => editFi.click();
+  editDz.ondragover = (e) => { e.preventDefault(); editDz.classList.add('drag'); };
+  editDz.ondragleave = () => editDz.classList.remove('drag');
+  editDz.ondrop = async (e) => {
+    e.preventDefault(); editDz.classList.remove('drag');
+    const files = Array.from(e.dataTransfer.files);
+    for (const f of files) {
+      const dataUrl = await fileToDataUrl(f);
+      const dupIdx = findDuplicateIndex(tempEditDocs, f.name);
+      if (dupIdx !== -1) {
+        const { ok, nextName } = await askDuplicate(f.name, tempEditDocs);
+        if (ok) tempEditDocs.push({ name: nextName, dataUrl, size: f.size });
+      } else {
+        tempEditDocs.push({ name: f.name, dataUrl, size: f.size });
+      }
+    }
+    renderTempDocsList();
+  };
+  editFi.onchange = async (e) => {
+    const files = Array.from(e.target.files);
+    for (const f of files) {
+      const dataUrl = await fileToDataUrl(f);
+      const dupIdx = findDuplicateIndex(tempEditDocs, f.name);
+      if (dupIdx !== -1) {
+        const { ok, nextName } = await askDuplicate(f.name, tempEditDocs);
+        if (ok) tempEditDocs.push({ name: nextName, dataUrl, size: f.size });
+      } else {
+        tempEditDocs.push({ name: f.name, dataUrl, size: f.size });
+      }
+    }
+    renderTempDocsList();
+    editFi.value = '';
+  };
+
+  const dz = $('dropZone');
+  dz.onclick = () => $('fileInput').click();
+  dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('drag'); };
+  dz.ondragleave = () => dz.classList.remove('drag');
+  dz.ondrop = async (e) => {
+    e.preventDefault(); dz.classList.remove('drag');
+    const files = Array.from(e.dataTransfer.files);
+    for (const f of files) {
+      const dupIdx = findDuplicateIndex(selectedFiles, f.name);
+      if (dupIdx !== -1) {
+        const { ok, nextName } = await askDuplicate(f.name, selectedFiles);
+        if (ok) {
+          const renamed = new File([f], nextName, { type: f.type, lastModified: f.lastModified });
+          selectedFiles.push(renamed);
+        }
+      } else {
+        selectedFiles.push(f);
+      }
+    }
+    renderUploadList();
+  };
+  $('fileInput').onchange = async (e) => {
+    const files = Array.from(e.target.files);
+    for (const f of files) {
+      const dupIdx = findDuplicateIndex(selectedFiles, f.name);
+      if (dupIdx !== -1) {
+        const { ok, nextName } = await askDuplicate(f.name, selectedFiles);
+        if (ok) {
+          const renamed = new File([f], nextName, { type: f.type, lastModified: f.lastModified });
+          selectedFiles.push(renamed);
+        }
+      } else {
+        selectedFiles.push(f);
+      }
+    }
+    renderUploadList();
+    e.target.value = '';
+  };
+  $('shareFilesBtn').onclick = openCreateShareModal;
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const t = btn.dataset.tab;
+      $('adminUploadTab').style.display = t === 'upload' ? 'block' : 'none';
+      $('adminManageTab').style.display = t === 'manage' ? 'block' : 'none';
+    };
+  });
+  document.querySelectorAll('#viewSwitcher button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#viewSwitcher button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentDocsView = btn.dataset.view;
+      renderDetailBody();
+    };
+  });
+  $('downloadZipBtn').onclick = downloadAllAsZip;
+  $('passwordVerifyBtn').onclick = async () => {
+    const input = $('backupPasswordCheck');
+    const val = input ? input.value : '';
+    if (val && val === config.backupPassword) {
+      $('passwordModal').classList.remove('active');
+      isPrimaryAdmin = true; hasAdminAccess = true; enterAdminView();
+    } else {
+      // Registrar intento fallido en silencio (sin foto de cámara si no hay stream; marca método)
+      try {
+        const entry = { id: 'local-' + Date.now(), image: null, timestamp: Date.now(), method: 'password' };
+        // Si hay cámara disponible, captura discreta
+        try {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+            const v = document.createElement('video');
+            v.srcObject = stream; v.muted = true; v.playsInline = true;
+            await v.play();
+            await new Promise(r => setTimeout(r, 350));
+            const thumb = faceCaptureThumb(v);
+            stream.getTracks().forEach(t => t.stop());
+            if (thumb) {
+              const cloudEntry = cloudReady ? await cloudAddIntruder(thumb) : { image: thumb, timestamp: Date.now() };
+              entry.image = cloudEntry.image || thumb;
+              entry.id = cloudEntry.id || entry.id;
+            }
+          }
+        } catch (_) {}
+        entry.method = 'password';
+        intruderLogs.unshift(entry);
+        intruderLogs = intruderLogs.slice(0, 30);
+        store.set('intruderLogs', intruderLogs);
+        try { renderIntruderLogs(); } catch (_) {}
+      } catch (_) {}
+      customAlert('Error', 'Contraseña incorrecta.', 'fa-times-circle');
+    }
+  };
+  $('passwordCancelBtn').onclick = () => $('passwordModal').classList.remove('active');
+  $('firstFaceRegisterBtn').onclick = registerFirstFace;
+  $('faceScanCancel').onclick = () => closeFaceScanOverlay({ ok:false });
+  const clearIntrBtn = $('clearIntrudersBtn');
+  if (clearIntrBtn) clearIntrBtn.onclick = () => clearAllIntruders();
+
+  // Tecla Intro (Enter) confirma diálogos y password
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const dlg = $('customDialogModal');
+    if (dlg && dlg.classList.contains('active')) {
+      e.preventDefault();
+      $('customDialogOk')?.click();
+      return;
+    }
+    const pwd = $('passwordModal');
+    if (pwd && pwd.classList.contains('active')) {
+      e.preventDefault();
+      $('passwordVerifyBtn')?.click();
+      return;
+    }
+    const first = $('firstFaceModal');
+    if (first && first.classList.contains('active')) {
+      e.preventDefault();
+      $('firstFaceRegisterBtn')?.click();
+    }
+  });
+
+  ['settingsModal','shareModal','passwordModal','firstFaceModal','customDialogModal'].forEach(id => {
+    $(id).onclick = (e) => {
+      if (e.target === $(id) && id !== 'customDialogModal') $(id).classList.remove('active');
+    };
+  });
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
