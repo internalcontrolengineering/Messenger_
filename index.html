@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>FileShare · Claymorphism + Apple TV</title>
+<title>Messenger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -742,7 +742,7 @@
       <div class="brand" id="headerHomeBtn" style="cursor:pointer;">
         <img id="headerLogo" class="logo-img hidden" src="" alt="logo">
         <span class="brand-text">
-          <span class="brand-title" id="headerTitle">FileShare</span>
+          <span class="brand-title" id="headerTitle">Messenger</span>
         </span>
       </div>
       <div class="nav-spacer"></div>
@@ -1086,7 +1086,7 @@ const store = {
 };
 
 const DEFAULT_CONFIG = {
-  appName: 'FileShare',
+  appName: 'Messenger',
   theme: 'auto',
   accentColor: '#0071e3',
   headerLogoLight: null,
@@ -1119,7 +1119,7 @@ config.introTextSize = config.introTextSize ?? 16;
 config.introAppNameSize = config.introAppNameSize ?? 48;
 config.introDuration = config.introDuration ?? 5;
 config.appNameDuration = config.appNameDuration ?? 2;
-config.appName = config.appName ?? 'FileShare';
+config.appName = config.appName ?? 'Messenger';
 config.introText = config.introText ?? '';
 config.theme = config.theme ?? 'auto';
 config.accentColor = config.accentColor ?? '#0071e3';
@@ -1600,11 +1600,11 @@ async function initCloud() {
     // Si no hay fila de settings, crear con config local
     await pushConfigToCloud();
     setupRealtime();
-    console.log('[FileShare] Supabase conectado · tiempo real activo');
+    console.log('[Messenger] Supabase conectado · tiempo real activo');
     return true;
   } catch (e) {
     cloudReady = false;
-    console.warn('[FileShare] Supabase no disponible, modo local', e);
+    console.warn('[Messenger] Supabase no disponible, modo local', e);
     return false;
   }
 }
@@ -3370,7 +3370,7 @@ async function resolveDuplicatesInSelectedFiles() {
 
 function openShareInviteEmail(share) {
   if (!share) return;
-  const appName = (config && config.appName) || 'FileShare';
+  const appName = (config && config.appName) || 'Messenger';
   const expDate = new Date(share.expiry).toLocaleString('es-MX');
   const access = share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar';
   const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
