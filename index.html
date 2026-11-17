@@ -158,82 +158,89 @@
 
   .carousel-section {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    position: relative; perspective: 1200px;
-    padding: max(56px, calc(var(--nav-h) * 0.4)) 60px max(56px, 48px);
+    position: relative;
+    padding: max(40px, calc(var(--nav-h) * 0.4)) 24px 48px;
     margin-top: 8px;
     min-height: calc(100dvh - var(--nav-h) - 16px);
     box-sizing: border-box;
-    gap: 18px;
+    gap: 22px;
+  }
+  .profile-switcher-bar {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px; border-radius: 980px;
+    background: var(--bg-sunk); border: 1px solid var(--line);
+    box-shadow: var(--shadow-sm);
+  }
+  .profile-switch-tab {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 18px; border-radius: 980px;
+    font-size: 13.5px; font-weight: 500; color: var(--text-2);
+    background: transparent; border: none; cursor: pointer;
+    transition: all .25s var(--ease);
+  }
+  .profile-switch-tab:hover { color: var(--text); }
+  .profile-switch-tab.active {
+    background: var(--bg-elev); color: var(--text); font-weight: 600;
+    box-shadow: var(--shadow-sm);
   }
   .carousel-3d {
-    position: relative; width: 100%;
-    height: min(400px, calc(100dvh - var(--nav-h) - 200px));
-    min-height: 260px;
+    position: relative; width: 100%; max-width: 400px;
     display: flex; justify-content: center; align-items: center;
-    transform-style: preserve-3d;
-    flex-shrink: 0;
   }
   .profile-card-3d {
-    position: absolute;
-    width: min(300px, 70vw);
-    height: min(360px, calc(100dvh - var(--nav-h) - 220px), 52vh);
-    min-height: 240px;
-    max-height: 100%;
+    width: 100%;
     border-radius: var(--r-xl); cursor: pointer;
-    transition: all .5s cubic-bezier(.4,0,.2,1);
+    transition: transform .35s var(--ease), box-shadow .35s var(--ease), border-color .35s var(--ease);
     display: flex; flex-direction: column; align-items: center; text-align: center;
-    padding: 22px 20px 18px;
+    padding: 36px 28px 30px;
     background: var(--bg-elev); box-shadow: var(--shadow-md); border: 1px solid var(--line);
-    overflow: hidden; /* todo el contenido dentro */
+    overflow: hidden;
     box-sizing: border-box;
+    animation: profileCardIn .32s var(--ease);
   }
-  .profile-card-3d.active-card { box-shadow: 0 0 0 3px var(--accent), var(--shadow-lg); border-color: var(--accent); transform: scale(1.03); }
+  .profile-card-3d.hidden { display: none !important; }
+  .profile-card-3d:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow-lg);
+    border-color: var(--accent);
+  }
+  @keyframes profileCardIn {
+    from { opacity: 0; transform: translateY(10px) scale(.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
   .card-icon {
-    width: 88px; height: 88px;
-    border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    margin-bottom: 14px; flex-shrink: 0; transition: transform .4s;
-    overflow: hidden; /* icono siempre dentro del círculo */
+    width: 84px; height: 84px;
+    border-radius: 24px; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 18px; flex-shrink: 0; transition: transform .3s var(--ease);
+    overflow: hidden;
   }
-  .profile-card-3d.active-card .card-icon { transform: scale(1.05); }
+  .profile-card-3d:hover .card-icon { transform: scale(1.04); }
   .card-icon i {
-    font-size: 2.35rem; line-height: 1; width: 1em; height: 1em;
+    font-size: 2.2rem; line-height: 1; width: 1em; height: 1em;
     display: flex; align-items: center; justify-content: center;
-    color: #fff; text-shadow: 0 4px 12px rgba(0,0,0,.3);
+    color: #fff; text-shadow: 0 4px 12px rgba(0,0,0,.25);
   }
   .card-title {
-    font-size: clamp(1.15rem, 3.5vw, 1.5rem); font-weight: 600; letter-spacing: -.5px;
-    color: var(--text); margin-bottom: 6px; flex-shrink: 0;
+    font-size: 1.5rem; font-weight: 700; letter-spacing: -.03em;
+    color: var(--text); margin-bottom: 8px; flex-shrink: 0;
     max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .card-desc {
-    font-size: clamp(.75rem, 2vw, .85rem); color: var(--text-2); line-height: 1.4;
-    margin-bottom: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    font-size: .92rem; color: var(--text-2); line-height: 1.5;
+    margin-bottom: 20px; max-width: 300px;
   }
   .card-badge {
-    display: inline-block; padding: 6px 14px; border-radius: 40px;
-    font-size: .68rem; font-weight: 600; letter-spacing: .3px; text-transform: uppercase;
-    margin-top: auto; flex-shrink: 0; max-width: 100%;
+    display: inline-block; padding: 6px 14px; border-radius: 980px;
+    font-size: .7rem; font-weight: 600; letter-spacing: .4px; text-transform: uppercase;
+    margin-bottom: 20px; flex-shrink: 0;
   }
-  .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .25s; z-index: 20; font-size: 1.3rem; background: var(--bg-elev); border: 1px solid var(--line); color: var(--accent); box-shadow: var(--shadow-sm); }
-  .nav-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); transform: translateY(-50%) scale(1.1); }
-  .nav-btn:active { transform: translateY(-50%) scale(.96); }
-  .nav-left { left: 0; } .nav-right { right: 0; }
-  .carousel-dots {
-    display: flex; justify-content: center; align-items: center; gap: 10px;
-    margin-top: 28px; /* separado de las tarjetas para no encimarse */
-    padding: 8px 0 4px;
-    height: auto; min-height: 20px; flex-shrink: 0; z-index: 5;
-    position: relative;
+  .card-enter-btn {
+    width: 100%; height: 44px; border-radius: 14px;
+    font-size: 14.5px; font-weight: 600; color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: opacity .2s, transform .2s;
   }
-  .carousel-dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--line-2); cursor: pointer; transition: all .3s;
-    flex-shrink: 0;
-  }
-  .carousel-dot.active {
-    background: var(--accent); width: 28px; border-radius: 6px;
-  }
+  .card-enter-btn:hover { opacity: .92; }
 
   .view-section { display: none; flex-direction: column; padding: 24px 0; }
   .view-section.active { display: flex; }
@@ -326,13 +333,21 @@
     width: 100%;
   }
   .doc-card .doc-size { font-size: .72rem; color: var(--text-3); font-weight: 500; margin-top: auto; }
-  .doc-card .doc-dl {
+  .doc-card .doc-dl,
+  .doc-grid-item .doc-dl {
     position: absolute; top: 10px; right: 10px; z-index: 3;
     width: 32px; height: 32px; border-radius: 50%;
     background: var(--accent); color: #fff; font-size: .75rem;
     display: grid; place-items: center; opacity: 0; transition: opacity .2s;
   }
-  .doc-card:hover .doc-dl { opacity: 1; }
+  .doc-list-item .doc-dl {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: .75rem;
+    display: grid; place-items: center; opacity: 0; transition: opacity .2s;
+  }
+  .doc-card:hover .doc-dl,
+  .doc-grid-item:hover .doc-dl,
+  .doc-list-item:hover .doc-dl { opacity: 1; }
 
   .ftype-pdf   { background: linear-gradient(145deg, #e53935, #b71c1c); }
   .ftype-word  { background: linear-gradient(145deg, #2b579a, #1e3f73); }
@@ -676,22 +691,15 @@
     .nav-inner { padding: 10px 14px; gap: 10px; flex-wrap: wrap; }
     .brand .brand-title { font-size: 20px !important; }
     .carousel-section {
-      padding: max(28px, calc(var(--nav-h) * 0.25)) 20px 28px;
+      padding: max(28px, calc(var(--nav-h) * 0.25)) 16px 28px;
       margin-top: 8px;
       min-height: calc(100dvh - var(--nav-h) - 16px);
     }
-    .carousel-3d {
-      height: min(360px, calc(100dvh - var(--nav-h) - 140px));
-      min-height: 240px;
-    }
     .profile-card-3d {
-      width: min(240px, 76vw);
-      height: min(320px, calc(100dvh - var(--nav-h) - 180px), 54vh);
-      min-height: 240px;
-      padding: 22px 18px;
+      padding: 28px 20px 24px;
     }
-    .card-icon { width: 80px; height: 80px; margin-bottom: 14px; overflow: hidden; }
-    .card-icon i { font-size: 2.1rem; }
+    .card-icon { width: 72px; height: 72px; margin-bottom: 14px; overflow: hidden; }
+    .card-icon i { font-size: 1.9rem; }
     .tv-card { width: 220px; height: 130px; }
     .doc-card { width: 148px; height: 190px; }
     .doc-card .doc-icon { width: 84px; height: 84px; font-size: 1rem; border-radius: 18px; }
@@ -757,10 +765,8 @@
 
   <main class="stage">
     <div id="profileCarouselSection" class="carousel-section">
+      <div class="profile-switcher-bar" id="carouselDots" role="tablist" aria-label="Seleccionar perfil"></div>
       <div class="carousel-3d" id="carousel3d"></div>
-      <button class="nav-btn nav-left" id="carouselPrev" title="Anterior (←)"><i class="fas fa-chevron-left"></i></button>
-      <button class="nav-btn nav-right" id="carouselNext" title="Siguiente (→)"><i class="fas fa-chevron-right"></i></button>
-      <div class="carousel-dots" id="carouselDots"></div>
     </div>
 
     <div id="consultantView" class="view-section">
@@ -2276,63 +2282,65 @@ function checkIntro() {
   }
 }
 
+function setVisibleProfile(idx) {
+  activeCardIndex = ((idx % profiles.length) + profiles.length) % profiles.length;
+  const cards = document.querySelectorAll('.profile-card-3d');
+  const tabs = document.querySelectorAll('.profile-switch-tab');
+  cards.forEach((card, i) => {
+    const isSelected = i === activeCardIndex;
+    card.classList.toggle('hidden', !isSelected);
+    card.classList.toggle('active-card', isSelected);
+  });
+  tabs.forEach((tab, i) => {
+    const isSelected = i === activeCardIndex;
+    tab.classList.toggle('active', isSelected);
+    tab.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  });
+}
 function buildCarousel() {
   const container = $('carousel3d');
-  const dots = $('carouselDots');
-  container.innerHTML = ''; dots.innerHTML = '';
+  const switcher = $('carouselDots');
+  container.innerHTML = ''; switcher.innerHTML = '';
   profiles.forEach((p, idx) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'profile-switch-tab' + (idx === 0 ? ' active' : '');
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
+    tab.innerHTML = `<i class="fas ${p.icon}"></i><span>${p.title}</span>`;
+    tab.addEventListener('click', () => setVisibleProfile(idx));
+    switcher.appendChild(tab);
+
     const card = document.createElement('div');
-    card.className = 'profile-card-3d';
-    card.style.transform = `rotateY(${idx * angleStep}deg) translateZ(280px)`;
+    card.className = 'profile-card-3d' + (idx !== 0 ? ' hidden' : ' active-card');
     card.innerHTML = `
       <div class="card-icon" style="background:linear-gradient(135deg, ${p.color} 0%, ${p.colorEnd} 100%); box-shadow: var(--shadow-md);"><i class="fas ${p.icon}"></i></div>
       <div class="card-title">${p.title}</div>
       <div class="card-desc">${p.description}</div>
-      <div class="card-badge" style="background:linear-gradient(135deg, ${p.color}20, ${p.color}40); color:${p.color}; border:1px solid ${p.color}60;">${p.badge}</div>`;
+      <div class="card-badge" style="background:${p.color}18; color:${p.color}; border:1px solid ${p.color}45;">${p.badge}</div>
+      <div class="card-enter-btn" style="background:linear-gradient(135deg, ${p.color} 0%, ${p.colorEnd} 100%);">
+        <span>Continuar como ${p.title}</span>
+        <i class="fas fa-arrow-right"></i>
+      </div>`;
     card.addEventListener('click', () => selectProfile(p.id));
     container.appendChild(card);
-    const dot = document.createElement('span');
-    dot.className = 'carousel-dot' + (idx === 0 ? ' active' : '');
-    dot.addEventListener('click', () => {
-      const currentIdx = ((activeCardIndex % profiles.length) + profiles.length) % profiles.length;
-      rotationAngle += (idx - currentIdx) * angleStep;
-      updateCarousel();
-    });
-    dots.appendChild(dot);
   });
-  setTimeout(() => updateActiveCard(), 80);
+  setVisibleProfile(0);
 }
 function updateCarousel() {
-  if (isAnimating) return;
-  isAnimating = true;
-  document.querySelectorAll('.profile-card-3d').forEach((card, idx) => {
-    card.style.transform = `rotateY(${(idx * angleStep) + rotationAngle}deg) translateZ(280px)`;
-    card.style.transition = 'transform .55s cubic-bezier(.4,0,.2,1)';
-  });
-  setTimeout(() => { isAnimating = false; }, 560);
-  updateActiveCard();
+  setVisibleProfile(activeCardIndex);
 }
 function updateActiveCard() {
-  const cards = document.querySelectorAll('.profile-card-3d');
-  const dots = document.querySelectorAll('.carousel-dot');
-  cards.forEach(c => c.classList.remove('active-card'));
-  dots.forEach(d => d.classList.remove('active'));
-  let minAngle = Infinity, activeIndex = 0;
-  cards.forEach((card, idx) => {
-    let angle = Math.abs(((idx * angleStep + rotationAngle) % 360 + 360) % 360);
-    if (angle > 180) angle = 360 - angle;
-    if (angle < minAngle) { minAngle = angle; activeIndex = idx; }
-  });
-  activeCardIndex = activeIndex;
-  cards[activeIndex]?.classList.add('active-card');
-  dots[activeIndex]?.classList.add('active');
+  setVisibleProfile(activeCardIndex);
 }
-function rotateCarousel(step) { rotationAngle += step; updateCarousel(); }
+function rotateCarousel(step) {
+  const dir = step >= 0 ? 1 : -1;
+  setVisibleProfile(activeCardIndex + dir);
+}
 function selectProfile(profileId) {
   const idx = profiles.findIndex(p => p.id === profileId);
   if (idx === -1) return;
-  const currentIdx = ((activeCardIndex % profiles.length) + profiles.length) % profiles.length;
-  if (idx !== currentIdx) { rotationAngle += (idx - currentIdx) * angleStep; updateCarousel(); return; }
+  if (idx !== activeCardIndex) { setVisibleProfile(idx); return; }
   if (profileId === 'administrador') {
     if (config.faces.length === 0) { $('firstFaceModal').classList.add('active'); return; }
     openBiometricModal();
@@ -2357,7 +2365,7 @@ function logoutToCarousel() {
   $('consultantView').classList.remove('active');
   $('adminView').classList.remove('active');
   $('shareDetailView').classList.remove('active');
-  rotationAngle = 0; updateCarousel();
+  setVisibleProfile(0);
   updateSessionUI();
 }
 
@@ -3232,12 +3240,7 @@ function createUploadCard(file, groupKey) {
       <div class="doc-info"><div class="doc-name">${escapeHtml(file.name)}</div><div class="doc-size">${sizeStr}</div></div>
       <div class="doc-actions"></div>`;
     const actions = dc.querySelector('.doc-actions');
-    const rm = document.createElement('button');
-    rm.className = 'icon-btn';
-    rm.innerHTML = '<i class="fas fa-times" style="color:var(--danger)"></i>';
-    rm.title = 'Quitar';
-    rm.onclick = (e) => { e.stopPropagation(); tooltip.hide(); selectedFiles.splice(originalIndex, 1); renderUploadList(); };
-    actions.appendChild(rm);
+    actions.appendChild(removeBtn());
     dc.addEventListener('click', async () => {
       const doc = await fileToPreviewDoc(file);
       openDocViewer(doc, null);
@@ -3612,10 +3615,8 @@ function setupEventListeners() {
 
   $('headerHomeBtn').onclick = () => {
     if (hasAdminAccess) { $('adminView').classList.add('active'); $('consultantView').classList.remove('active'); $('shareDetailView').classList.remove('active'); }
-    else { $('consultantView').classList.remove('active'); $('adminView').classList.remove('active'); $('shareDetailView').classList.remove('active'); $('profileCarouselSection').style.display = ''; }
+    else { $('consultantView').classList.remove('active'); $('adminView').classList.remove('active'); $('shareDetailView').classList.remove('active'); $('profileCarouselSection').style.display = ''; setVisibleProfile(0); }
   };
-  $('carouselPrev').onclick = () => rotateCarousel(-angleStep);
-  $('carouselNext').onclick = () => rotateCarousel(angleStep);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && $('docViewerRoot').classList.contains('active')) { closeDocViewer(); return; }
     if ($('profileCarouselSection').style.display === 'none') return;
