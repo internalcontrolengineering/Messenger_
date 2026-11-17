@@ -962,7 +962,7 @@
 <div class="modal-overlay" id="shareModal">
   <div class="modal-content" style="max-width: 620px;">
     <h2 id="shareModalTitle"><i class="fas fa-share-nodes"></i> Crear tarjeta</h2>
-    <div class="form-field"><label>Nombre de la tarjeta <span id="nameLockIcon" style="display:none; color:var(--danger); margin-left:5px;"><i class="fas fa-lock"></i> En uso</span></label><input type="text" id="shareName" placeholder="Ej. Reportes Q1" maxlength="60"><i class="fas fa-check-circle input-status" id="nameStatusIcon" style="color:var(--ok);"></i></div>
+    <div class="form-field"><label>Nombre de la tarjeta <span id="nameLockIcon" style="display:none; color:var(--danger); margin-left:5px;"><i class="fas fa-lock"></i> En uso</span></label><input type="text" id="shareName" placeholder="Nombre" maxlength="60"><i class="fas fa-check-circle input-status" id="nameStatusIcon" style="color:var(--ok);"></i></div>
     <div class="form-field"><label>Contraseña de acceso</label><input type="text" id="sharePassword" placeholder="Contraseña" maxlength="60"></div>
     <div class="form-row-3">
       <div class="form-field"><label>Tiempo vigencia</label><input type="number" id="shareExpiry" value="24" min="1" max="3650"></div>
@@ -2066,14 +2066,13 @@ let themeMediaListener = null;
 
 function applyTheme(theme) {
   const mode = theme || config.theme || 'auto';
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const hour = new Date().getHours();
-  const isNight = hour >= 18 || hour < 6; // 18:00–05:59 oscuro
+  const isNight = hour >= 18 || hour < 6; // 06:00 - 17:59 claro, 18:00 - 05:59 oscuro
 
   let dark = false;
   if (mode === 'dark') dark = true;
   else if (mode === 'light') dark = false;
-  else dark = isNight || prefersDark;
+  else dark = isNight;
 
   document.body.classList.toggle('dark', dark);
   document.body.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -2102,11 +2101,7 @@ function applyTheme(theme) {
   if (mode === 'auto') {
     themeAutoTimer = setInterval(() => {
       if ((config.theme || 'auto') === 'auto') applyTheme('auto');
-    }, 60000);
-    themeMediaListener = () => {
-      if ((config.theme || 'auto') === 'auto') applyTheme('auto');
-    };
-    try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeMediaListener); } catch (_) {}
+    }, 15000);
   }
 }
 
@@ -2598,13 +2593,40 @@ function renderConsultantView() {
   container.appendChild(group);
   refreshDragScroll();
 }
+function validateSharePassword(pwd) {
+  const val = String(pwd ?? '');
+  if (!val) return 'Ingresa una contraseña.';
+  const hasBefore = /^\s/.test(val);
+  const hasAfter = /\s$/.test(val);
+  const trimmed = val.replace(/^\s+|\s+$/g, '');
+  const hasBetween = /\s/.test(trimmed);
+  if (hasBefore || hasAfter || hasBetween) {
+    const pos = [];
+    if (hasBefore) pos.push('antes');
+    if (hasBetween) pos.push('entre');
+    if (hasAfter) pos.push('después');
+    return `La contraseña no debe contener espacios (se detectó un espacio ${pos.join(' y ')} de la contraseña).`;
+  }
+  if (val.length < 8) return 'La contraseña debe contener al menos 8 caracteres e incluir una letra mayúscula, una letra minúscula y un carácter especial.';
+  if (!/[A-ZÁÉÍÓÚÜÑ]/.test(val)) return 'La contraseña debe incluir al menos 1 letra mayúscula.';
+  if (!/[a-záéíóúüñ]/.test(val)) return 'La contraseña debe incluir al menos 1 letra minúscula.';
+  if (!/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s]/.test(val)) return 'La contraseña debe incluir al menos 1 carácter especial.';
+  return null;
+}
+
 function openShareForConsultant(share) {
   customPrompt('Acceso a tarjeta', `Ingresa la contraseña para "${share.name}":`).then(pwd => {
+    if (pwd === null) return;
+    const pwdErr = validateSharePassword(pwd);
+    if (pwdErr) {
+      customAlert('Contraseña no válida', pwdErr, 'fa-exclamation-triangle');
+      return;
+    }
     if (pwd === share.password) {
       if (Date.now() > share.expiry) { customAlert('Expirada', 'Esta tarjeta ha caducado.'); return; }
       unlockedSharePasswords[share.id] = String(pwd);
       openDetailView(share);
-    } else if (pwd !== null) {
+    } else {
       customAlert('Error', 'Contraseña incorrecta.', 'fa-times-circle');
     }
   });
@@ -3386,7 +3408,7 @@ function openShareInviteEmail(share) {
     `1. Abre la aplicación: ${pageUrl}\n` +
     `2. Entra como Consultor\n` +
     `3. Abre la tarjeta «${share.name}»\n` +
-    `4. Contraseña: ${share.password}\n\n` +
+    `4. Contraseña: «${share.password}»\n\n` +
     `Tipo de acceso: ${access}\n` +
     `Vigencia hasta: ${expDate}\n\n` +
     `Documentos:\n${docs}\n\n` +
@@ -3397,16 +3419,46 @@ function openShareInviteEmail(share) {
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
 }
 
+function openShareUpdateEmail(share, changes) {
+  if (!share) return;
+  const appName = (config && config.appName) || 'Messenger';
+  const expDate = new Date(share.expiry).toLocaleString('es-MX');
+  const access = share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar';
+  const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
+  const pageUrl = location.href.split('#')[0];
+  const changesList = (changes && changes.length)
+    ? changes.map(c => '• ' + c).join('\n')
+    : '• Actualización general de la tarjeta';
+  const subject = encodeURIComponent(`${appName}: actualización de tarjeta «${share.name}»`);
+  const body = encodeURIComponent(
+    `Hola,\n\n` +
+    `Se ha actualizado la tarjeta «${share.name}» en ${appName}.\n\n` +
+    `Cambios realizados:\n${changesList}\n\n` +
+    `Datos actuales para acceder:\n` +
+    `1. Abre la aplicación: ${pageUrl}\n` +
+    `2. Entra como Consultor\n` +
+    `3. Abre la tarjeta «${share.name}»\n` +
+    `4. Contraseña: ${share.password}\n\n` +
+    `Tipo de acceso: ${access}\n` +
+    `Vigencia hasta: ${expDate}\n\n` +
+    `Documentos actuales:\n${docs}\n\n` +
+    `— Enviado desde ${appName} | Internal Control Engineering \n` +
+    `— Control Interno \n`
+  );
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
 async function confirmShare() {
   const name = $('shareName').value.trim();
-  const password = $('sharePassword').value.trim();
+  const password = $('sharePassword').value;
   const expiryAmount = parseInt($('shareExpiry').value) || 24;
   const expiryUnit = $('shareExpiryUnit').value;
   const accessType = $('shareAccessType').value;
   if (!name) { customAlert('Atención', 'Ingresa un nombre para la tarjeta'); return; }
   const exists = shares.some(s => s.name.toLowerCase() === name.toLowerCase() && s.id !== editingShareId);
   if (exists) { customAlert('Bloqueado', 'Ya existe una tarjeta con ese nombre. Cambia el nombre para continuar.', 'fa-lock'); return; }
-  if (!password) { customAlert('Atención', 'Ingresa una contraseña'); return; }
+  const pwdError = validateSharePassword(password);
+  if (pwdError) { customAlert('Contraseña no válida', pwdError, 'fa-exclamation-triangle'); return; }
   const hours = expiryUnit === 'days' ? expiryAmount * 24 : expiryAmount;
   const expiry = Date.now() + hours * 60 * 60 * 1000;
   const btn = $('confirmShareBtn');
@@ -3432,6 +3484,26 @@ async function confirmShare() {
         else toRemove.add(i);
       }
       const finalDocs = tempEditDocs.filter((_, i) => !toRemove.has(i));
+
+      const changes = [];
+      if (share.name !== name) {
+        changes.push(`Nombre de tarjeta: «${share.name}» → «${name}»`);
+      }
+      if (share.password !== password) {
+        changes.push(`Contraseña actualizada: «${password}»`);
+      }
+      if (Math.abs((share.expiry || 0) - expiry) > 60000) {
+        changes.push(`Nueva vigencia hasta: ${new Date(expiry).toLocaleString('es-MX')}`);
+      }
+      const prevDocNames = new Set((share.documents || []).map(d => d.name));
+      const addedDocs = finalDocs.filter(d => !prevDocNames.has(d.name));
+      if (addedDocs.length > 0) {
+        changes.push(`Documentos agregados: ${addedDocs.map(d => d.name).join(', ')}`);
+      }
+      if (share.accessType !== accessType) {
+        changes.push(`Tipo de acceso: ${accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`);
+      }
+
       share.name = name;
       share.password = password;
       share.accessType = accessType;
@@ -3443,6 +3515,9 @@ async function confirmShare() {
         showToast('Tarjeta actualizada', 'fa-check');
       }
       store.set('shares', shares);
+      if (changes.length > 0) {
+        openShareUpdateEmail(share, changes);
+      }
     } else {
       if (selectedFiles.length === 0) { customAlert('Atención', 'No hay archivos seleccionados'); return; }
       await resolveDuplicatesInSelectedFiles();
