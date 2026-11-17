@@ -3390,7 +3390,8 @@ function openShareInviteEmail(share) {
     `Tipo de acceso: ${access}\n` +
     `Vigencia hasta: ${expDate}\n\n` +
     `Documentos:\n${docs}\n\n` +
-    `— Enviado desde ${appName}`
+    `— Enviado desde ${appName} | Internal Control Engineering \n` +
+    `— Control Interno \n`
   );
   // mailto sin destinatario fijo: el admin elige a quién enviarlo
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
