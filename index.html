@@ -15,6 +15,7 @@
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>
 <style>
   :root {
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif;
@@ -153,6 +154,22 @@
   .user-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 30px; background: var(--bg-sunk); font-size: 13px; font-weight: 500; white-space: nowrap; }
   .user-badge.admin { background: var(--accent-soft); color: var(--accent); }
   .user-badge .avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, #5e5ce6, #bf5af2); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .session-timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 600;
+    color: var(--text-2);
+    padding: 6px 10px;
+    border-radius: 980px;
+    background: var(--bg-sunk);
+    border: 1px solid var(--line);
+    min-width: 58px; text-align: center;
+    letter-spacing: 0.02em;
+    user-select: none;
+  }
+  .session-timer.hidden { display: none !important; }
+  .session-timer.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+  .session-timer.danger { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); animation: sessionPulse 1s ease infinite; }
+  @keyframes sessionPulse { 50% { opacity: .65; transform: scale(1.04); } }
 
   .stage { flex: 1; max-width: 1400px; width: 100%; margin: 0 auto; padding: 0 24px 60px; }
 
@@ -758,6 +775,7 @@
         <span class="avatar" id="userAvatar">A</span>
         <span id="userName">Admin</span>
       </div>
+      <span class="session-timer hidden" id="sessionTimer" title="Tiempo restante de sesión" aria-live="polite"></span>
       <button class="icon-btn hidden" id="settingsBtn" title="Configuración"><i class="fas fa-cog"></i></button>
       <button class="btn btn-secondary btn-sm hidden" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Salir</button>
     </div>
@@ -943,9 +961,16 @@
             </div>
           </div>
           <div class="settings-row"><div class="label-group"><strong>Contraseña respaldo</strong><span>Si falla biometría</span></div><div class="control" style="display:flex; gap:8px;"><input type="password" id="backupPasswordInput" placeholder="Contraseña"><button class="btn btn-secondary btn-sm" id="savePasswordBtn">Guardar</button></div></div>
+          <div class="settings-row">
+            <div class="label-group"><strong>Cierre por inactividad</strong><span>Minutos sin actividad para cerrar la sesión automáticamente. 0 = desactivado. El contador aparece junto a Salir; en el último minuto late en rojo.</span></div>
+            <div class="control"><input type="number" id="sessionTimeoutInput" min="0" max="480" step="1" value="0" style="width:100px;"></div>
+          </div>
         </div>
         <div class="settings-section hidden" data-panel="logs">
-          <h3><i class="fas fa-history"></i> Accesos denegados</h3>
+          <h3><i class="fas fa-user-check"></i> Destinatarios registrados</h3>
+          <p style="font-size:12.5px; color:var(--text-3); margin-bottom:10px;">Rostros y nombres de personas que ya configuraron acceso en tarjetas activas.</p>
+          <div id="registeredAccessLog" style="display:flex; flex-direction:column; gap:10px; max-height:220px; overflow-y:auto; margin-bottom:18px;"></div>
+          <h3 style="margin-top:8px;"><i class="fas fa-history"></i> Accesos denegados</h3>
           <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
             <button class="btn btn-danger btn-sm" id="clearIntrudersBtn" type="button"><i class="fas fa-trash"></i> Eliminar todos</button>
           </div>
@@ -960,14 +985,24 @@
 </div>
 
 <div class="modal-overlay" id="shareModal">
-  <div class="modal-content" style="max-width: 620px;">
+  <div class="modal-content" style="max-width: 680px;">
     <h2 id="shareModalTitle"><i class="fas fa-share-nodes"></i> Crear tarjeta</h2>
     <div class="form-field"><label>Nombre de la tarjeta <span id="nameLockIcon" style="display:none; color:var(--danger); margin-left:5px;"><i class="fas fa-lock"></i> En uso</span></label><input type="text" id="shareName" placeholder="Nombre" maxlength="60"><i class="fas fa-check-circle input-status" id="nameStatusIcon" style="color:var(--ok);"></i></div>
-    <div class="form-field"><label>Contraseña de acceso</label><input type="text" id="sharePassword" placeholder="Contraseña" maxlength="60"></div>
     <div class="form-row-3">
       <div class="form-field"><label>Tiempo vigencia</label><input type="number" id="shareExpiry" value="24" min="1" max="3650"></div>
       <div class="form-field"><label>Unidad</label><select id="shareExpiryUnit"><option value="hours" selected>Horas</option><option value="days">Días</option></select></div>
       <div class="form-field"><label>Tipo acceso</label><select id="shareAccessType"><option value="view">Solo ver</option><option value="download" selected>Ver y descargar</option></select></div>
+    </div>
+    <div id="recipientsSection" style="margin-top:18px; border-top:1px solid var(--line); padding-top:16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+        <h3 style="font-size:15px; font-weight:600; margin:0;"><i class="fas fa-users"></i> Destinatarios</h3>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label style="font-size:13px; color:var(--text-2);">Cantidad</label>
+          <input type="number" id="recipientsCount" min="1" max="20" value="1" style="width:70px; padding:8px 10px; border-radius:10px; border:1px solid var(--line-2); background:var(--bg-sunk);">
+        </div>
+      </div>
+      <p style="font-size:12.5px; color:var(--text-3); margin-bottom:12px;">Se generará un PIN de un solo uso por cada persona. Tú enviarás el correo individualmente desde la tarjeta.</p>
+      <div id="recipientsList" style="display:flex; flex-direction:column; gap:10px; max-height:280px; overflow-y:auto;"></div>
     </div>
     <div id="editDocsSection" class="hidden" style="margin-top:20px; border-top:1px solid var(--line); padding-top:20px;">
       <h3 style="font-size:16px; margin-bottom:12px;">Documentos incluidos</h3>
@@ -1109,6 +1144,7 @@ const DEFAULT_CONFIG = {
   appNameDuration: 2,
   backupPassword: '',
   cameraEnabled: true,
+  sessionTimeoutMinutes: 0,
   faces: []
 };
 
@@ -1303,14 +1339,22 @@ async function fetchSharesFromCloud() {
         dataUrl: d.public_url || publicUrl(BUCKET_DOCS, d.storage_path),
         addedAt: d.added_at
       }));
+      let recipients = [];
+      try {
+        const { data: recs, error: rErr } = await sb.from('share_recipients')
+          .select('*').eq('share_id', row.id);
+        if (!rErr && recs) {
+          recipients = recs.map(r => mapDbRecipient(r));
+        }
+      } catch (re) { console.warn('recipients', re); }
       list.push({
         id: row.id,
         name: row.name,
-        password: row.password,
         accessType: row.access_type,
         expiry: new Date(row.expiry).getTime(),
         createdAt: new Date(row.created_at).getTime(),
-        documents
+        documents,
+        recipients
       });
     }
     shares = list;
@@ -1374,7 +1418,46 @@ function hideUploadProgress() {
   if (ov) ov.classList.remove('visible');
 }
 
-async function cloudUpsertShare(share, documentFiles /* optional File[] parallel to new docs */) {
+/** Mapeo DB real ↔ modelo interno
+ *  Tabla share_recipients usa: recipient_name, recipient_email, activation_pin_enc, invite_sent
+ *  + password_hash, face_descriptor, face_thumb, registered_at (añadidas)
+ */
+function mapDbRecipient(r) {
+  if (!r) return null;
+  let desc = r.face_descriptor || null;
+  if (desc && typeof desc === 'object' && !Array.isArray(desc)) {
+    desc = Object.keys(desc).sort((a, b) => Number(a) - Number(b)).map(k => desc[k]);
+  }
+  if (Array.isArray(desc)) desc = desc.map(Number);
+  return {
+    id: r.id,
+    name: r.recipient_name || r.name || '',
+    email: r.recipient_email || r.email || '',
+    pin: r.activation_pin_enc || r.pin || null,
+    pinSent: !!(r.invite_sent ?? r.pin_sent),
+    passwordHash: r.password_hash || null,
+    faceDescriptor: Array.isArray(desc) && desc.length === 128 ? desc : null,
+    faceThumb: r.face_thumb || null,
+    registeredAt: r.registered_at ? new Date(r.registered_at).getTime() : null,
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : null
+  };
+}
+
+function toDbRecipientPayload(rec, shareId) {
+  return {
+    share_id: shareId,
+    recipient_name: rec.name,
+    recipient_email: rec.email,
+    activation_pin_enc: rec.pin || null,
+    invite_sent: !!rec.pinSent,
+    password_hash: rec.passwordHash || null,
+    face_descriptor: Array.isArray(rec.faceDescriptor) ? rec.faceDescriptor : null,
+    face_thumb: rec.faceThumb || null,
+    registered_at: rec.registeredAt ? new Date(rec.registeredAt).toISOString() : null
+  };
+}
+
+async function cloudUpsertShare(share) {
   const total = Math.max(1, (share.documents || []).length);
   showUploadProgress('Subiendo a la nube', `0 / ${total} archivos`);
   setUploadProgress(2, 'Registrando tarjeta…');
@@ -1382,7 +1465,6 @@ async function cloudUpsertShare(share, documentFiles /* optional File[] parallel
   const { error } = await sb.from('shares').upsert({
     id: share.id,
     name: share.name,
-    password: share.password,
     access_type: share.accessType,
     expiry: new Date(share.expiry).toISOString(),
     created_at: new Date(share.createdAt || Date.now()).toISOString(),
@@ -1394,10 +1476,10 @@ async function cloudUpsertShare(share, documentFiles /* optional File[] parallel
 
   const uploadedDocs = [];
   let i = 0;
-  for (const doc of share.documents) {
+  for (const doc of (share.documents || [])) {
     i++;
     const label = `Archivo ${i} de ${total}: ${doc.name}`;
-    setUploadProgress(5 + (i - 1) / total * 90, label);
+    setUploadProgress(5 + (i - 1) / total * 85, label);
     let storagePath = doc.storagePath;
     let pub = doc.dataUrl;
     if (doc.dataUrl && String(doc.dataUrl).startsWith('data:')) {
@@ -1424,23 +1506,167 @@ async function cloudUpsertShare(share, documentFiles /* optional File[] parallel
       storagePath,
       mimeType: doc.mimeType
     });
-    setUploadProgress(5 + i / total * 90, label);
+    setUploadProgress(5 + i / total * 85, label);
   }
   share.documents = uploadedDocs;
+
+  // Destinatarios: sincronizar (no borrar los ya registrados al editar)
+  if (Array.isArray(share.recipients)) {
+    setUploadProgress(92, 'Sincronizando destinatarios…');
+    const { data: existingRecs } = await sb.from('share_recipients')
+      .select('id, recipient_email').eq('share_id', share.id);
+    const existingByEmail = {};
+    (existingRecs || []).forEach(r => {
+      const em = (r.recipient_email || '').toLowerCase();
+      if (em) existingByEmail[em] = r.id;
+    });
+
+    for (const rec of share.recipients) {
+      const emailKey = String(rec.email || '').toLowerCase();
+      const payload = toDbRecipientPayload(rec, share.id);
+      if (existingByEmail[emailKey]) {
+        const { data: upd, error: uErr } = await sb.from('share_recipients')
+          .update(payload).eq('id', existingByEmail[emailKey]).select().single();
+        if (uErr) console.warn('recipient update', uErr);
+        if (!uErr && upd) rec.id = upd.id;
+        delete existingByEmail[emailKey];
+      } else {
+        const { data: ins, error: iErr } = await sb.from('share_recipients').insert(payload).select().single();
+        if (iErr) console.warn('recipient insert', iErr);
+        if (!iErr && ins) rec.id = ins.id;
+      }
+    }
+  }
+
   finishUploadProgress(`${total} archivo(s) cargados correctamente`);
   return share;
 }
 
 async function cloudDeleteShare(id) {
-  // Borrar archivos del bucket (best effort)
   try {
     const { data: docs } = await sb.from('share_documents').select('storage_path').eq('share_id', id);
     const paths = (docs || []).map(d => d.storage_path).filter(Boolean);
     if (paths.length) await sb.storage.from(BUCKET_DOCS).remove(paths);
   } catch (_) {}
+  try { await sb.from('recipient_access_log').delete().eq('share_id', id); } catch (_) {}
+  try { await sb.from('share_recipients').delete().eq('share_id', id); } catch (_) {}
   await sb.from('share_documents').delete().eq('share_id', id);
   const { error } = await sb.from('shares').delete().eq('id', id);
   if (error) throw error;
+}
+
+async function cloudUpdateRecipient(rec, shareId) {
+  if (!rec) return false;
+  const sid = shareId || rec.shareId;
+  try {
+    const payload = toDbRecipientPayload(rec, sid);
+    if (rec.id) {
+      const { data, error } = await sb.from('share_recipients').update(payload).eq('id', rec.id).select().single();
+      if (error) throw error;
+      if (data) rec.id = data.id;
+    } else if (sid && rec.email) {
+      const { data: existing } = await sb.from('share_recipients')
+        .select('id').eq('share_id', sid).eq('recipient_email', rec.email).maybeSingle();
+      if (existing && existing.id) {
+        const { data, error } = await sb.from('share_recipients').update(payload).eq('id', existing.id).select().single();
+        if (error) throw error;
+        if (data) rec.id = data.id;
+      } else {
+        const { data: ins, error: iErr } = await sb.from('share_recipients').insert(payload).select().single();
+        if (iErr) throw iErr;
+        if (ins) rec.id = ins.id;
+      }
+    } else {
+      return false;
+    }
+
+    // Auditoría en recipient_access_log (miniaturas visibles en cualquier dispositivo)
+    if (rec.passwordHash || rec.faceDescriptor) {
+      const shareRow = shares.find(s => s.id === sid);
+      const logPayload = {
+        share_id: sid,
+        share_name: shareRow ? shareRow.name : '',
+        recipient_id: rec.id || null,
+        recipient_name: rec.name,
+        has_face: !!rec.faceDescriptor,
+        face_thumb: rec.faceThumb || null,
+        enrolled_at: rec.registeredAt ? new Date(rec.registeredAt).toISOString() : new Date().toISOString()
+      };
+      try {
+        // Borrar entrada previa del mismo recipient en esa tarjeta e insertar
+        if (rec.id) {
+          await sb.from('recipient_access_log').delete().eq('share_id', sid).eq('recipient_id', rec.id);
+        }
+        await sb.from('recipient_access_log').insert(logPayload);
+      } catch (e2) { console.warn('access_log', e2); }
+    }
+    return true;
+  } catch (e) {
+    console.warn('cloudUpdateRecipient', e);
+    throw e;
+  }
+}
+
+async function purgeExpiredShareCredentials() {
+  const now = Date.now();
+  for (const share of shares) {
+    if (share.expiry && share.expiry < now && Array.isArray(share.recipients) && share.recipients.length) {
+      const hadCreds = share.recipients.some(r => r.passwordHash || r.faceDescriptor || r.faceThumb);
+      if (hadCreds || share.recipients.some(r => r.pin)) {
+        for (const rec of share.recipients) {
+          rec.passwordHash = null;
+          rec.faceDescriptor = null;
+          rec.faceThumb = null;
+          rec.pin = null;
+          rec.registeredAt = null;
+          if (cloudReady && rec.id) {
+            try {
+              await sb.from('share_recipients').update({
+                password_hash: null,
+                face_descriptor: null,
+                face_thumb: null,
+                activation_pin_enc: null,
+                registered_at: null
+              }).eq('id', rec.id);
+            } catch (_) {}
+          }
+        }
+        if (cloudReady) {
+          try { await sb.from('recipient_access_log').delete().eq('share_id', share.id); } catch (_) {}
+        }
+        store.set('shares', shares);
+      }
+    }
+  }
+}
+
+function generatePin(length = 8) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let pin = '';
+  for (let i = 0; i < length; i++) pin += chars[Math.floor(Math.random() * chars.length)];
+  return pin;
+}
+
+function getBcrypt() {
+  // bcryptjs UMD puede exponerse de varias formas según el CDN
+  if (typeof bcrypt !== 'undefined' && bcrypt && typeof bcrypt.hashSync === 'function') return bcrypt;
+  if (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt && typeof dcodeIO.bcrypt.hashSync === 'function') return dcodeIO.bcrypt;
+  if (window.bcrypt && typeof window.bcrypt.hashSync === 'function') return window.bcrypt;
+  if (window.dcodeIO && window.dcodeIO.bcrypt && typeof window.dcodeIO.bcrypt.hashSync === 'function') return window.dcodeIO.bcrypt;
+  return null;
+}
+
+function hashPassword(plain) {
+  const b = getBcrypt();
+  if (!b) throw new Error('bcrypt no disponible (recarga la página)');
+  return b.hashSync(String(plain), 10);
+}
+
+function verifyPassword(plain, hash) {
+  if (!hash) return false;
+  const b = getBcrypt();
+  if (!b) return false;
+  try { return b.compareSync(String(plain), hash); } catch (_) { return false; }
 }
 
 async function cloudAddIntruder(dataUrl) {
@@ -1469,7 +1695,10 @@ function kickFromShare(reason, icon) {
   tooltip.hide();
   closeDocViewer();
   const id = currentDetailShare && currentDetailShare.id;
-  if (id) delete unlockedSharePasswords[id];
+  if (id) {
+    delete unlockedSharePasswords[id];
+    delete unlockedShareRecipients[id];
+  }
   currentDetailShare = null;
   const detail = $('shareDetailView');
   if (detail) detail.classList.remove('active');
@@ -1501,17 +1730,23 @@ function enforceConsultantShareAccess() {
         kickFromShare('expired', 'fa-clock');
         return;
       }
-      const knownPwd = unlockedSharePasswords[fresh.id];
-      if (knownPwd != null && String(fresh.password) !== String(knownPwd)) {
-        kickFromShare('password', 'fa-key');
-        return;
+      // Si el consultor tenía un destinatario desbloqueado y ese destinatario desapareció, expulsar
+      if (!hasAdminAccess) {
+        const unlockedId = unlockedShareRecipients[fresh.id];
+        if (unlockedId) {
+          const still = (fresh.recipients || []).find(r => r.id === unlockedId || r.email === unlockedId);
+          if (!still || (!still.passwordHash && !still.faceDescriptor && !still.pin)) {
+            // credenciales purgadas
+            delete unlockedShareRecipients[fresh.id];
+            kickFromShare('expired', 'fa-lock');
+            return;
+          }
+        }
       }
-      // Actualizar en vivo documentos y metadatos
-      const prevDocId = viewerState && viewerState.doc && (viewerState.doc.id || viewerState.doc.name);
       currentDetailShare = fresh;
       try {
         $('detailTitle').textContent = fresh.name;
-        $('detailSub').textContent = `${fresh.documents.length} documento(s) · ${fresh.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`;
+        $('detailSub').textContent = `${(fresh.documents || []).length} documento(s) · ${fresh.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`;
         $('downloadZipBtn').style.display = fresh.accessType === 'download' ? '' : 'none';
         renderDetailBody();
       } catch (_) {}
@@ -1539,13 +1774,6 @@ function enforceConsultantShareAccess() {
       } else if (isShareExpired(s)) {
         closeDocViewer();
         customAlert('Plazo vencido', 'El plazo de esta compartición ha expirado.', 'fa-clock');
-      } else {
-        const knownPwd = unlockedSharePasswords[s.id];
-        if (knownPwd != null && String(s.password) !== String(knownPwd)) {
-          closeDocViewer();
-          if (currentDetailShare && currentDetailShare.id === s.id) kickFromShare('password', 'fa-key');
-          else customAlert('Acceso revocado', 'La contraseña de esta compartición cambió.', 'fa-key');
-        }
       }
     }
   } catch (e) { console.warn(e); }
@@ -1558,40 +1786,88 @@ function refreshUIFromState() {
   try { renderAdminView(); } catch (_) {}
   try { renderFaceList(); } catch (_) {}
   try { renderIntruderLogs(); } catch (_) {}
+  // Si el consultor/admin tiene abierta una tarjeta, refrescarla con datos nuevos
+  try {
+    if (currentDetailShare && currentDetailShare.id) {
+      const fresh = shares.find(s => s.id === currentDetailShare.id);
+      if (!fresh || isShareExpired(fresh)) {
+        // Tarjeta eliminada o expirada: sacar al usuario
+        if ($('shareDetailView')?.classList.contains('active')) {
+          closeDocViewer();
+          currentDetailShare = null;
+          if (hasAdminAccess) enterAdminView();
+          else {
+            $('shareDetailView').classList.remove('active');
+            $('consultantView').classList.add('active');
+            renderConsultantView();
+          }
+        }
+      } else if ($('shareDetailView')?.classList.contains('active')) {
+        currentDetailShare = fresh;
+        $('detailTitle').textContent = fresh.name;
+        const recCount = (fresh.recipients || []).length;
+        $('detailSub').textContent = `${(fresh.documents || []).length} documento(s) · ${fresh.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}${recCount ? ' · ' + recCount + ' destinatario(s)' : ''}`;
+        $('downloadZipBtn').style.display = fresh.accessType === 'download' ? '' : 'none';
+        renderDetailBody();
+      }
+    }
+  } catch (e) { console.warn('refresh detail', e); }
   enforceConsultantShareAccess();
 }
 
+let _rtRefreshTimer = null;
+function scheduleRealtimeRefresh(kind) {
+  // Debounce: varios eventos seguidos → una sola recarga
+  clearTimeout(_rtRefreshTimer);
+  _rtRefreshTimer = setTimeout(async () => {
+    try {
+      if (kind === 'settings') {
+        await pullConfigFromCloud();
+      } else if (kind === 'intruders') {
+        await fetchIntrudersFromCloud();
+      } else {
+        await fetchSharesFromCloud();
+      }
+      refreshUIFromState();
+    } catch (e) { console.warn('rt refresh', e); }
+  }, 250);
+}
+
 function setupRealtime() {
-  // Limpiar canales previos
   realtimeChannels.forEach(ch => { try { sb.removeChannel(ch); } catch (_) {} });
   realtimeChannels = [];
 
   const chSettings = sb.channel('rt-app-settings')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, async () => {
-      await pullConfigFromCloud();
-      refreshUIFromState();
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => {
+      scheduleRealtimeRefresh('settings');
     })
     .subscribe();
 
   const chShares = sb.channel('rt-shares')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'shares' }, async () => {
-      await fetchSharesFromCloud();
-      refreshUIFromState();
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'shares' }, () => {
+      scheduleRealtimeRefresh('shares');
     })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'share_documents' }, async () => {
-      await fetchSharesFromCloud();
-      refreshUIFromState();
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'share_documents' }, () => {
+      scheduleRealtimeRefresh('shares');
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'share_recipients' }, () => {
+      scheduleRealtimeRefresh('shares');
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'recipient_access_log' }, () => {
+      // Solo Accesos / miniaturas; no hace falta refetch completo de shares
+      try { renderIntruderLogs(); } catch (_) {}
+      scheduleRealtimeRefresh('shares');
     })
     .subscribe();
 
   const chIntr = sb.channel('rt-intruders')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'intruder_logs' }, async () => {
-      await fetchIntrudersFromCloud();
-      try { renderIntruderLogs(); } catch (_) {}
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'intruder_logs' }, () => {
+      scheduleRealtimeRefresh('intruders');
     })
     .subscribe();
 
   realtimeChannels.push(chSettings, chShares, chIntr);
+  console.log('[Messenger] Canales realtime: app_settings, shares, share_documents, share_recipients, recipient_access_log, intruder_logs');
 }
 
 async function initCloud() {
@@ -1618,8 +1894,10 @@ async function initCloud() {
 
 let selectedFiles = [];
 let currentDetailShare = null;
-/** Contraseña con la que el consultor desbloqueó cada tarjeta (para detectar cambios en tiempo real) */
+/** Legacy (ya no se usa contraseña global) */
 let unlockedSharePasswords = {};
+/** Destinatario desbloqueado por tarjeta: { [shareId]: recipientId|email } */
+if (typeof unlockedShareRecipients === 'undefined') var unlockedShareRecipients = {};
 
 const appSession = {
   key: 'fs_app_session',
@@ -1632,6 +1910,7 @@ const appSession = {
   clear() {
     try { sessionStorage.removeItem(this.key); } catch (_) {}
     unlockedSharePasswords = {};
+    unlockedShareRecipients = {};
   },
   save() {
     const detailId = currentDetailShare ? currentDetailShare.id : null;
@@ -1639,7 +1918,7 @@ const appSession = {
       role: hasAdminAccess ? 'admin' : (($('consultantView') && $('consultantView').classList.contains('active')) || ($('shareDetailView') && $('shareDetailView').classList.contains('active'))) ? 'consultant' : null,
       isPrimaryAdmin: !!isPrimaryAdmin,
       detailShareId: detailId,
-      unlocked: unlockedSharePasswords,
+      unlockedRecipients: unlockedShareRecipients,
       faceSessionAuthed: !!faceSessionAuthed
     });
   }
@@ -1858,22 +2137,29 @@ function customAlert(title, text, icon = 'fa-info-circle') {
     dialogResolve = resolve;
     $('customDialogIcon').innerHTML = `<i class="fas ${icon}"></i>`;
     $('customDialogTitle').textContent = title;
-    $('customDialogText').textContent = text;
+    const el = $('customDialogText');
+    if (typeof text === 'string' && text.trim().startsWith('<')) el.innerHTML = text;
+    else el.textContent = text;
     $('customDialogInput').classList.add('hidden');
     $('customDialogCancel').classList.add('hidden');
     $('customDialogOk').textContent = 'Aceptar';
+    $('customDialogOk').className = 'btn btn-primary';
     $('customDialogModal').classList.add('active');
   });
 }
-function customConfirm(title, text, isDanger = false) {
+function customConfirm(title, text, isDanger = false, okLabel = 'Aceptar', cancelLabel = 'Cancelar') {
   return new Promise(resolve => {
     dialogResolve = resolve;
     $('customDialogIcon').innerHTML = isDanger ? '<i class="fas fa-exclamation-triangle" style="color:var(--danger)"></i>' : '<i class="fas fa-question-circle"></i>';
     $('customDialogTitle').textContent = title;
-    $('customDialogText').textContent = text;
+    const el = $('customDialogText');
+    if (typeof text === 'string' && text.includes('\n')) el.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+    else el.textContent = text;
     $('customDialogInput').classList.add('hidden');
-    $('customDialogCancel').classList.remove('hidden');
-    $('customDialogOk').textContent = 'Aceptar';
+    const cancelBtn = $('customDialogCancel');
+    cancelBtn.classList.remove('hidden');
+    cancelBtn.textContent = cancelLabel || 'Cancelar';
+    $('customDialogOk').textContent = okLabel || 'Aceptar';
     $('customDialogOk').className = isDanger ? 'btn btn-danger' : 'btn btn-primary';
     $('customDialogModal').classList.add('active');
   });
@@ -1945,17 +2231,19 @@ async function init() {
       const s = appSession.get();
       if (s && s.role === 'consultant' && s.detailShareId) {
         const share = shares.find(x => x.id === s.detailShareId);
-        if (share && unlockedSharePasswords[share.id] === String(share.password) && !isShareExpired(share)) {
+        if (share && unlockedShareRecipients[share.id] && !isShareExpired(share)) {
           if (!$('shareDetailView').classList.contains('active')) openDetailView(share);
           else { currentDetailShare = share; renderDetailBody(); }
         } else if (s.detailShareId) {
           enforceConsultantShareAccess();
         }
       }
+      try { purgeExpiredShareCredentials(); } catch (_) {}
     });
     // Revisar plazos / clave / docs cada 15 s
     setInterval(() => {
       try { enforceConsultantShareAccess(); } catch (_) {}
+      try { purgeExpiredShareCredentials(); } catch (_) {}
     }, 15000);
     try { await ensureFaceApi(); } catch (e) { console.warn('Face API no disponible'); }
     refreshDragScroll();
@@ -2044,6 +2332,7 @@ function applyConfig() {
   setVal('introAppNameSizeVal', iApp + 'px');
   setVal('introDurationInput', iDur);
   setVal('appNameDurationInput', aDur);
+  setVal('sessionTimeoutInput', config.sessionTimeoutMinutes ?? 0);
 
   try { updateLogoPreviews(); } catch (e) { console.warn(e); }
   try { updateSessionUI(); } catch (e) { console.warn(e); }
@@ -2129,7 +2418,8 @@ function updateSessionUI() {
 function restoreSessionFromStorage() {
   const s = appSession.get();
   if (!s || !s.role) return false;
-  if (s.unlocked && typeof s.unlocked === 'object') unlockedSharePasswords = s.unlocked;
+  if (s.unlockedRecipients && typeof s.unlockedRecipients === 'object') unlockedShareRecipients = s.unlockedRecipients;
+  else if (s.unlocked && typeof s.unlocked === 'object') unlockedSharePasswords = s.unlocked;
   faceSessionAuthed = !!s.faceSessionAuthed;
   if (s.role === 'admin') {
     isPrimaryAdmin = !!s.isPrimaryAdmin;
@@ -2143,7 +2433,7 @@ function restoreSessionFromStorage() {
     $('adminView').classList.remove('active');
     if (s.detailShareId) {
       const share = shares.find(x => x.id === s.detailShareId);
-      if (share && !isShareExpired(share) && unlockedSharePasswords[share.id] === String(share.password)) {
+      if (share && !isShareExpired(share) && unlockedShareRecipients[share.id]) {
         openDetailView(share);
         updateSessionUI();
         return true;
@@ -2153,6 +2443,7 @@ function restoreSessionFromStorage() {
     $('shareDetailView').classList.remove('active');
     renderConsultantView();
     updateSessionUI();
+    startSessionWatch();
     return true;
   }
   return false;
@@ -2347,6 +2638,7 @@ function selectProfile(profileId) {
     renderConsultantView();
     hasAdminAccess = false;
     updateSessionUI();
+    startSessionWatch();
     appSession.save();
   }
 }
@@ -2354,14 +2646,77 @@ function logoutToCarousel() {
   hasAdminAccess = false; isPrimaryAdmin = false; faceSessionAuthed = false;
   currentDetailShare = null;
   unlockedSharePasswords = {};
+  unlockedShareRecipients = {};
   appSession.clear();
   closeDocViewer();
+  stopSessionWatch();
   $('profileCarouselSection').style.display = '';
   $('consultantView').classList.remove('active');
   $('adminView').classList.remove('active');
   $('shareDetailView').classList.remove('active');
   setVisibleProfile(0);
   updateSessionUI();
+}
+
+/* ---- Contador de sesión por inactividad ---- */
+let sessionLastActivity = Date.now();
+let sessionWatchId = null;
+let sessionListenersBound = false;
+
+function sessionTimeoutMs() {
+  const m = +(config && config.sessionTimeoutMinutes);
+  if (!m || m <= 0) return 0;
+  return Math.max(1, m) * 60 * 1000;
+}
+function touchSessionActivity() {
+  sessionLastActivity = Date.now();
+}
+function updateSessionCountdown() {
+  const el = $('sessionTimer');
+  if (!el) return;
+  const active = hasAdminAccess ||
+    ($('consultantView') && $('consultantView').classList.contains('active')) ||
+    ($('shareDetailView') && $('shareDetailView').classList.contains('active'));
+  const limit = sessionTimeoutMs();
+  if (!active || !limit) {
+    el.classList.add('hidden');
+    el.textContent = '';
+    el.classList.remove('warn', 'danger');
+    return;
+  }
+  el.classList.remove('hidden');
+  const left = Math.max(0, limit - (Date.now() - sessionLastActivity));
+  const totalSec = Math.ceil(left / 1000);
+  const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const ss = String(totalSec % 60).padStart(2, '0');
+  el.textContent = `${mm}:${ss}`;
+  el.title = `La sesión se cierra por inactividad en ${mm}:${ss}`;
+  el.classList.toggle('warn', totalSec <= 60 && totalSec > 15);
+  el.classList.toggle('danger', totalSec <= 60);
+  if (left <= 0) {
+    showToast('Sesión cerrada por inactividad', 'fa-clock');
+    logoutToCarousel();
+  }
+}
+function startSessionWatch() {
+  touchSessionActivity();
+  if (!sessionWatchId) sessionWatchId = setInterval(updateSessionCountdown, 1000);
+  if (!sessionListenersBound) {
+    sessionListenersBound = true;
+    ['pointerdown', 'keydown', 'mousemove', 'touchstart', 'scroll', 'click'].forEach(ev => {
+      document.addEventListener(ev, touchSessionActivity, { passive: true, capture: true });
+    });
+  }
+  updateSessionCountdown();
+}
+function stopSessionWatch() {
+  if (sessionWatchId) { clearInterval(sessionWatchId); sessionWatchId = null; }
+  const el = $('sessionTimer');
+  if (el) {
+    el.classList.add('hidden');
+    el.textContent = '';
+    el.classList.remove('warn', 'danger');
+  }
 }
 
 function isValidFaceTemplate(t) { return Array.isArray(t) && t.length === 128 && t.every(n => typeof n === 'number' && Number.isFinite(n)); }
@@ -2430,10 +2785,17 @@ function openFaceScanOverlay(mode) {
     faceScanMode = mode; faceScanResolve = resolve;
     faceMatchStreak = 0; faceFailStreak = 0;
     const ov = $('faceScanOverlay'); const status = $('faceScanStatus');
-    $('faceScanTitle').textContent = mode === 'register' ? 'Registro facial' : 'Verificación facial';
+    const isRecipientReg = mode === 'register-recipient';
+    const isAdminReg = mode === 'register';
+    $('faceScanTitle').textContent = (isAdminReg || isRecipientReg) ? 'Registro facial' : 'Verificación facial';
     ov.classList.add('visible');
-    const regName = ($('faceNameInput').value.trim()) || 'Usuario';
-    if (status) status.textContent = 'Cargando modelo…';
+    const regName = ($('faceNameInput') && $('faceNameInput').value.trim()) || 'Usuario';
+    if (status) {
+      status.className = 'face-scan-status';
+      status.textContent = 'Cargando modelo…';
+    }
+    const frameEl0 = document.querySelector('.face-scan-frame');
+    if (frameEl0) frameEl0.classList.remove('ok', 'deny');
     try {
       await ensureFaceApi();
       faceStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } });
@@ -2441,7 +2803,7 @@ function openFaceScanOverlay(mode) {
       video.srcObject = faceStream;
       await new Promise(res => { if (video.readyState >= 2) return res(); video.onloadedmetadata = () => res(); });
       await video.play();
-      if (status) status.textContent = mode === 'register' ? 'Detectando rostro…' : 'Buscando rostro…';
+      if (status) status.textContent = (isAdminReg || isRecipientReg) ? 'Detectando rostro…' : 'Buscando rostro…';
       const samples = []; let lastDetectAt = 0; let registerFinished = false; let unlockFinished = false;
       const loop = async () => {
         if (!faceScanResolve || registerFinished || unlockFinished) return;
@@ -2452,7 +2814,27 @@ function openFaceScanOverlay(mode) {
         try {
           const desc = await detectFaceDescriptor(video);
           if (!desc) { faceMatchStreak = 0; if (status) status.textContent = 'No se detecta rostro.'; return; }
-          if (mode === 'register') {
+          // Registro de destinatario: captura descriptor + thumb, NO toca rostros de admin
+          if (isRecipientReg) {
+            samples.push(desc);
+            if (status) status.textContent = `Capturando… ${samples.length}/${FACE_REGISTER_SAMPLES}`;
+            if (samples.length >= FACE_REGISTER_SAMPLES) {
+              registerFinished = true; if (faceRaf) cancelAnimationFrame(faceRaf);
+              const avg = new Array(128).fill(0);
+              for (const s of samples) for (let i = 0; i < 128; i++) avg[i] += s[i];
+              for (let i = 0; i < 128; i++) avg[i] /= samples.length;
+              const thumb = faceCaptureThumb(video);
+              if (status) {
+                status.className = 'face-scan-status ok';
+                status.textContent = 'Rostro capturado con éxito.';
+              }
+              const frameEl = document.querySelector('.face-scan-frame');
+              if (frameEl) { frameEl.classList.add('ok'); frameEl.classList.remove('deny'); }
+              setTimeout(() => closeFaceScanOverlay({ ok: true, descriptor: avg, thumb }), 900);
+            }
+            return;
+          }
+          if (isAdminReg) {
             samples.push(desc);
             if (status) status.textContent = `Capturando… ${samples.length}/${FACE_REGISTER_SAMPLES}`;
             if (samples.length >= FACE_REGISTER_SAMPLES) {
@@ -2470,6 +2852,44 @@ function openFaceScanOverlay(mode) {
               config.faces.push(profile); saveConfig(); renderFaceList();
               if (status) status.textContent = 'Rostro registrado con éxito.';
               setTimeout(() => closeFaceScanOverlay({ ok:true }), 1200);
+            }
+            return;
+          }
+          // Verificación de destinatario (contra descriptor guardado en el recipient)
+          if (mode === 'verify-recipient') {
+            const target = pendingRecipientDescriptor;
+            const frameEl = document.querySelector('.face-scan-frame');
+            if (!target || !isValidFaceTemplate(target)) {
+              if (status) status.textContent = 'Sin plantilla facial.';
+              return;
+            }
+            const dist = faceDescriptorDistance(desc, target);
+            if (dist <= FACE_MATCH_THRESHOLD) {
+              faceMatchStreak++; faceFailStreak = 0;
+              if (status) {
+                status.className = 'face-scan-status ok';
+                status.innerHTML = `<i class="fas fa-check-circle"></i> Rostro reconocido`;
+              }
+              if (frameEl) { frameEl.classList.add('ok'); frameEl.classList.remove('deny'); }
+              if (faceMatchStreak >= FACE_MATCH_STREAK_NEED && !unlockFinished) {
+                unlockFinished = true; if (faceRaf) cancelAnimationFrame(faceRaf);
+                setTimeout(() => closeFaceScanOverlay({ ok: true }), 900);
+              }
+            } else {
+              faceMatchStreak = 0; faceFailStreak++;
+              if (status) {
+                status.className = 'face-scan-status warn';
+                status.textContent = 'Verificando…';
+              }
+              if (frameEl) frameEl.classList.remove('ok', 'deny');
+              if (faceFailStreak >= FACE_DENY_STREAK_NEED) {
+                if (status) {
+                  status.className = 'face-scan-status deny';
+                  status.innerHTML = `<i class="fas fa-lock"></i> Rostro no coincide`;
+                }
+                if (frameEl) { frameEl.classList.add('deny'); frameEl.classList.remove('ok'); }
+                setTimeout(() => closeFaceScanOverlay({ ok: false }), 1200);
+              }
             }
             return;
           }
@@ -2558,6 +2978,7 @@ function enterAdminView() {
   hasAdminAccess = true;
   renderAdminView();
   updateSessionUI();
+  startSessionWatch();
   appSession.save();
 }
 
@@ -2615,35 +3036,276 @@ function validateSharePassword(pwd) {
 }
 
 function openShareForConsultant(share) {
-  customPrompt('Acceso a tarjeta', `Ingresa la contraseña para "${share.name}":`).then(pwd => {
-    if (pwd === null) return;
-    const pwdErr = validateSharePassword(pwd);
-    if (pwdErr) {
-      customAlert('Contraseña no válida', pwdErr, 'fa-exclamation-triangle');
+  if (!share || isShareExpired(share)) {
+    customAlert('Expirada', 'Esta tarjeta ha caducado o ya no está disponible.', 'fa-clock');
+    return;
+  }
+  const recipients = share.recipients || [];
+  if (!recipients.length) {
+    customAlert('Sin acceso', 'Esta tarjeta no tiene destinatarios configurados.');
+    return;
+  }
+  // Si ya desbloqueó un destinatario en esta sesión y está registrado, entrar directo
+  const prevId = unlockedShareRecipients[share.id];
+  if (prevId) {
+    const prev = recipients.find(r => r.id === prevId || String(r.email) === String(prevId));
+    if (prev && (prev.passwordHash || prev.faceDescriptor)) {
+      openDetailView(share);
       return;
     }
-    if (pwd === share.password) {
-      if (Date.now() > share.expiry) { customAlert('Expirada', 'Esta tarjeta ha caducado.'); return; }
-      unlockedSharePasswords[share.id] = String(pwd);
+  }
+  showRecipientPicker(share);
+}
+
+function showRecipientPicker(share) {
+  const recipients = share.recipients || [];
+  const optionsHtml = recipients.map((r, i) => {
+    const status = r.passwordHash || r.faceDescriptor
+      ? '<span style="color:var(--ok);font-size:11px;">Registrado</span>'
+      : (r.pinSent ? '<span style="color:var(--warn);font-size:11px;">PIN enviado</span>' : '<span style="color:var(--text-3);font-size:11px;">Pendiente</span>');
+    return `<button class="btn btn-secondary" style="width:100%; justify-content:space-between; height:auto; padding:12px 16px; border-radius:12px;" data-rec-idx="${i}">
+      <span style="font-weight:600;">${escapeHtml(r.name)}</span>${status}
+    </button>`;
+  }).join('');
+
+  customAlert('Selecciona tu nombre', `
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px; text-align:left;">
+      ${optionsHtml}
+    </div>
+  `, 'fa-user');
+
+  // Hook buttons after dialog renders
+  setTimeout(() => {
+    document.querySelectorAll('#customDialogText [data-rec-idx]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-rec-idx'), 10);
+        const rec = recipients[idx];
+        $('customDialogModal').classList.remove('active');
+        if (!rec) return;
+        if (rec.passwordHash || rec.faceDescriptor) {
+          showRecipientAuth(share, rec);
+        } else {
+          showRecipientPinEntry(share, rec);
+        }
+      };
+    });
+  }, 50);
+}
+
+function showRecipientPinEntry(share, rec) {
+  customPrompt('PIN de un solo uso', `Hola ${rec.name}, ingresa el PIN que recibiste por correo:`).then(async pin => {
+    if (pin === null) return;
+    const entered = String(pin).trim().toUpperCase();
+    if (!rec.pin || entered !== String(rec.pin).toUpperCase()) {
+      customAlert('PIN incorrecto', 'El PIN no coincide. Verifica el correo o pide un reenvío al administrador.', 'fa-times-circle');
+      return;
+    }
+    // PIN válido → registro de credenciales
+    await startRecipientRegistration(share, rec);
+  });
+}
+
+function showRecipientAuth(share, rec) {
+  const hasFace = Array.isArray(rec.faceDescriptor) && rec.faceDescriptor.length === 128;
+  const hasPwd = !!rec.passwordHash;
+
+  if (hasFace && hasPwd) {
+    // OK = Escanear rostro (true); Cancelar = Usar contraseña (null)
+    customConfirm('Método de acceso', `Hola ${rec.name}. ¿Cómo deseas entrar?`, false, 'Escanear rostro', 'Usar contraseña').then(async useFace => {
+      if (useFace === true) {
+        const ok = await verifyRecipientFace(rec);
+        if (ok) { unlockedShareRecipients[share.id] = rec.id || rec.email; openDetailView(share); appSession.save(); }
+        else customAlert('No reconocido', 'Rostro no coincide. Intenta de nuevo o usa tu contraseña.', 'fa-times-circle');
+      } else {
+        // null = clic en "Usar contraseña"
+        promptRecipientPassword(share, rec);
+      }
+    });
+  } else if (hasFace) {
+    (async () => {
+      const ok = await verifyRecipientFace(rec);
+      if (ok) { unlockedShareRecipients[share.id] = rec.id || rec.email; openDetailView(share); appSession.save(); }
+      else customAlert('No reconocido', 'Rostro no coincide.', 'fa-times-circle');
+    })();
+  } else {
+    promptRecipientPassword(share, rec);
+  }
+}
+
+function promptRecipientPassword(share, rec) {
+  customPrompt('Contraseña personal', `Hola ${rec.name}, ingresa tu contraseña:`).then(pwd => {
+    if (pwd === null) return;
+    if (verifyPassword(pwd, rec.passwordHash)) {
+      unlockedShareRecipients[share.id] = rec.id || rec.email;
       openDetailView(share);
+      appSession.save();
     } else {
       customAlert('Error', 'Contraseña incorrecta.', 'fa-times-circle');
     }
   });
 }
+
+let pendingRecipientDescriptor = null;
+
+async function verifyRecipientFace(rec) {
+  if (!Array.isArray(rec.faceDescriptor) || rec.faceDescriptor.length !== 128) return false;
+  pendingRecipientDescriptor = rec.faceDescriptor;
+  try {
+    const res = await openFaceScanOverlay('verify-recipient');
+    pendingRecipientDescriptor = null;
+    return !!(res && res.ok);
+  } catch (e) {
+    pendingRecipientDescriptor = null;
+    console.warn(e);
+    return false;
+  }
+}
+
+async function startRecipientRegistration(share, rec) {
+  // Opciones: rostro + contraseña, o solo contraseña
+  const useFace = await customConfirm(
+    'Registro de acceso',
+    `Hola ${rec.name}. Elige cómo proteger tu acceso:\n\n• Aceptar = Rostro + contraseña de respaldo\n• Cancelar = Solo contraseña (sin cámara)`,
+    false,
+    'Rostro + contraseña',
+    'Solo contraseña'
+  );
+  if (useFace === null) return;
+
+  let faceDescriptor = null;
+  let faceThumb = null;
+
+  if (useFace) {
+    try {
+      const faceRes = await openFaceScanOverlay('register-recipient');
+      if (faceRes && faceRes.ok && faceRes.descriptor) {
+        faceDescriptor = faceRes.descriptor;
+        faceThumb = faceRes.thumb || null;
+      } else {
+        customAlert('Sin rostro', 'No se completó el registro facial. Puedes continuar solo con contraseña.');
+      }
+    } catch (e) {
+      console.warn(e);
+      customAlert('Cámara', 'No se pudo usar la cámara. Continúa solo con contraseña.');
+    }
+  }
+
+  // Pedir contraseña personal (obligatoria)
+  let password = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    password = await customPrompt('Crea tu contraseña', 'Mínimo 8 caracteres, con mayúscula, minúscula y un carácter especial:');
+    if (password === null) return;
+    const err = validateSharePassword(password);
+    if (err) {
+      customAlert('Contraseña no válida', err, 'fa-exclamation-triangle');
+      password = null;
+      continue;
+    }
+    const confirm = await customPrompt('Confirma tu contraseña', 'Vuelve a escribir la misma contraseña:');
+    if (confirm !== password) {
+      customAlert('No coinciden', 'Las contraseñas no son iguales.');
+      password = null;
+      continue;
+    }
+    break;
+  }
+  if (!password) return;
+
+  // Guardar hash, quemar PIN, subir thumb si hay
+  try {
+    rec.passwordHash = hashPassword(password);
+    rec.pin = null; // quemado
+    rec.registeredAt = Date.now();
+    if (faceDescriptor) rec.faceDescriptor = faceDescriptor;
+    if (faceThumb && String(faceThumb).startsWith('data:') && cloudReady) {
+      try {
+        const path = `recipients/${share.id}_${(rec.id || Date.now())}.jpg`;
+        rec.faceThumb = await uploadDataUrl(BUCKET_FACES, path, faceThumb);
+      } catch (_) {
+        rec.faceThumb = faceThumb;
+      }
+    } else if (faceThumb) {
+      rec.faceThumb = faceThumb;
+    }
+
+    if (cloudReady) {
+      await cloudUpdateRecipient(rec, share.id);
+    }
+
+    // Actualizar en el array local
+    const s = shares.find(x => x.id === share.id);
+    if (s && Array.isArray(s.recipients)) {
+      const idx = s.recipients.findIndex(r =>
+        (rec.id && r.id === rec.id) ||
+        (r.email && rec.email && String(r.email).toLowerCase() === String(rec.email).toLowerCase())
+      );
+      if (idx >= 0) s.recipients[idx] = { ...s.recipients[idx], ...rec };
+      else s.recipients.push(rec);
+    }
+    store.set('shares', shares);
+
+    unlockedShareRecipients[share.id] = rec.id || rec.email;
+    showToast('Acceso configurado', 'fa-check');
+    openDetailView(share);
+    appSession.save();
+  } catch (e) {
+    console.warn(e);
+    customAlert('Error', 'No se pudo guardar tu registro. ' + (e.message || ''));
+  }
+}
+
 function openDetailView(share) {
   currentDetailShare = share;
   currentDocsView = 'horizontal';
   $('detailTitle').textContent = share.name;
-  $('detailSub').textContent = `${share.documents.length} documento(s) · ${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`;
+  const recCount = (share.recipients || []).length;
+  $('detailSub').textContent = `${(share.documents || []).length} documento(s) · ${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}${recCount ? ' · ' + recCount + ' destinatario(s)' : ''}`;
   $('downloadZipBtn').style.display = share.accessType === 'download' ? '' : 'none';
   document.querySelectorAll('#viewSwitcher button').forEach(b => b.classList.toggle('active', b.dataset.view === 'horizontal'));
   $('consultantView').classList.remove('active');
   $('adminView').classList.remove('active');
   $('shareDetailView').classList.add('active');
   renderDetailBody();
+  startSessionWatch();
   appSession.save();
 }
+async function adminSendRecipientPin(share, rec) {
+  if (!share || !rec) return;
+  if (rec.passwordHash || rec.faceDescriptor) {
+    customAlert('Ya registrado', `${rec.name} ya configuró sus credenciales. No se puede reenviar el PIN.`, 'fa-check-circle');
+    return;
+  }
+  if (!rec.pin) {
+    rec.pin = generatePin(8);
+  }
+  const already = !!rec.pinSent;
+  const ok = await customConfirm(
+    already ? 'Reenviar PIN' : 'Enviar invitación',
+    already
+      ? `¿Reenviar el mismo PIN a ${rec.name} (${rec.email})?\nSe usará el PIN original, sin generar uno nuevo.`
+      : `¿Enviar invitación con PIN de un solo uso a ${rec.name} (${rec.email})?`,
+    false,
+    already ? 'Reenviar' : 'Enviar',
+    'Cancelar'
+  );
+  if (!ok) return;
+  rec.pinSent = true;
+  if (cloudReady) {
+    try { await cloudUpdateRecipient(rec, share.id); } catch (e) { console.warn(e); }
+  }
+  const s = shares.find(x => x.id === share.id);
+  if (s) {
+    const idx = (s.recipients || []).findIndex(r => r.email === rec.email || r.id === rec.id);
+    if (idx >= 0) s.recipients[idx] = rec;
+  }
+  store.set('shares', shares);
+  openRecipientInviteEmail(share, rec);
+  renderDetailBody();
+  showToast(already ? 'Reenvío listo' : 'Invitación lista', 'fa-envelope');
+}
+
 function closeDetailView() {
   $('shareDetailView').classList.remove('active');
   currentDetailShare = null;
@@ -2698,8 +3360,41 @@ function renderDetailBody() {
   if (!share) return;
   const body = $('detailDocsBody');
   body.innerHTML = '';
-  const docs = share.documents;
-  if (docs.length === 0) { body.innerHTML = '<p style="color:var(--text-3);">No hay documentos.</p>'; return; }
+
+  // Panel de destinatarios (solo admin)
+  if (hasAdminAccess && Array.isArray(share.recipients) && share.recipients.length) {
+    const recPanel = document.createElement('div');
+    recPanel.className = 'tv-group';
+    recPanel.innerHTML = `<div class="tv-group-header"><h3><i class="fas fa-users"></i> Destinatarios <span class="count">(${share.recipients.length})</span></h3></div>`;
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:6px 4px 20px;';
+    share.recipients.forEach((rec, idx) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--bg-elev); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; transition:.2s;';
+      const status = rec.passwordHash || rec.faceDescriptor
+        ? '<span style="color:var(--ok);font-size:11px;font-weight:600;"><i class="fas fa-check-circle"></i> Registrado</span>'
+        : (rec.pinSent
+          ? '<span style="color:var(--warn);font-size:11px;font-weight:600;"><i class="fas fa-paper-plane"></i> Enviado</span>'
+          : '<span style="color:var(--text-3);font-size:11px;font-weight:600;"><i class="fas fa-hourglass-half"></i> Pendiente</span>');
+      card.innerHTML = `
+        <div style="font-weight:700; font-size:14px; margin-bottom:4px;">${escapeHtml(rec.name)}</div>
+        <div style="font-size:12px; color:var(--text-3); margin-bottom:8px; word-break:break-all;">${escapeHtml(rec.email)}</div>
+        ${status}
+        <div style="margin-top:10px; font-size:12px; color:var(--accent);">${rec.passwordHash || rec.faceDescriptor ? 'Ya registrado' : (rec.pinSent ? 'Clic para reenviar PIN' : 'Clic para enviar PIN')}</div>`;
+      card.onmouseenter = () => { card.style.boxShadow = 'var(--shadow-md)'; card.style.borderColor = 'var(--accent)'; };
+      card.onmouseleave = () => { card.style.boxShadow = ''; card.style.borderColor = 'var(--line)'; };
+      card.onclick = () => adminSendRecipientPin(share, rec);
+      grid.appendChild(card);
+    });
+    recPanel.appendChild(grid);
+    body.appendChild(recPanel);
+  }
+
+  const docs = share.documents || [];
+  if (docs.length === 0) {
+    if (!hasAdminAccess) body.innerHTML += '<p style="color:var(--text-3);">No hay documentos.</p>';
+    return;
+  }
   const groups = {};
   docs.forEach(doc => {
     const typeName = getFileTypeName(doc.name);
@@ -3139,22 +3834,27 @@ function renderAdminRows() {
     container.innerHTML = `<p style="text-align:center; padding:40px 0; color:var(--text-2);">Aún no has creado tarjetas.</p>`;
     return;
   }
-  const group = document.createElement('div');
-  group.className = 'tv-group';
-  group.innerHTML = `<div class="tv-group-header"><h3><i class="fas fa-layer-group"></i> Mis tarjetas <span class="count">(${shares.length})</span></h3></div>`;
-  const scroll = document.createElement('div');
-  scroll.className = 'tv-row-scroll';
-  shares.forEach((share, idx) => {
+  const active = shares.filter(s => !isShareExpired(s));
+  const expired = shares.filter(s => isShareExpired(s));
+
+  const makeCard = (share, idx, isExpired) => {
     const card = document.createElement('div');
     card.className = 'tv-card';
-    const hue = shareHue(share.name, idx);
-    card.style.background = `linear-gradient(145deg, hsl(${hue},65%,55%), hsl(${hue+40},65%,35%))`;
+    if (isExpired) {
+      card.style.background = 'linear-gradient(145deg, #3a3a3c, #1c1c1e)';
+      card.style.filter = 'grayscale(0.85)';
+      card.style.opacity = '0.85';
+    } else {
+      const hue = shareHue(share.name, idx);
+      card.style.background = `linear-gradient(145deg, hsl(${hue},65%,55%), hsl(${hue+40},65%,35%))`;
+    }
     const hoursLeft = Math.floor((share.expiry - Date.now()) / 3600000);
+    const recN = (share.recipients || []).length;
     card.innerHTML = `
       <div class="badge-type">${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}</div>
-      <div class="badge-expiry ${hoursLeft < 24 ? 'urgent' : ''}"><i class="fas fa-clock"></i> ${hoursLeft < 0 ? 'Exp' : (hoursLeft < 24 ? hoursLeft+'h' : Math.floor(hoursLeft/24)+'d')}</div>
+      <div class="badge-expiry ${!isExpired && hoursLeft < 24 ? 'urgent' : ''}"><i class="fas fa-clock"></i> ${isExpired ? 'Expirada' : (hoursLeft < 24 ? hoursLeft+'h' : Math.floor(hoursLeft/24)+'d')}</div>
       <div class="card-name">${escapeHtml(share.name)}</div>
-      <div class="card-meta"><span><i class="fas fa-file"></i> ${share.documents.length} docs</span></div>`;
+      <div class="card-meta"><span><i class="fas fa-file"></i> ${(share.documents || []).length} docs</span>${recN ? `<span><i class="fas fa-users"></i> ${recN}</span>` : ''}</div>`;
     card.addEventListener('click', (e) => {
       if (e.target.closest('.admin-actions')) return;
       openDetailView(share);
@@ -3166,10 +3866,29 @@ function renderAdminRows() {
       <button class="icon-btn" data-del title="Eliminar" onclick="event.stopPropagation(); deleteShare('${share.id}')"><i class="fas fa-trash"></i></button>`;
     card.appendChild(actions);
     tooltip.bind(card, () => buildShareTooltipHtml(share));
-    scroll.appendChild(card);
-  });
-  group.appendChild(scroll);
-  container.appendChild(group);
+    return card;
+  };
+
+  if (active.length) {
+    const group = document.createElement('div');
+    group.className = 'tv-group';
+    group.innerHTML = `<div class="tv-group-header"><h3><i class="fas fa-layer-group"></i> Mis tarjetas <span class="count">(${active.length})</span></h3></div>`;
+    const scroll = document.createElement('div');
+    scroll.className = 'tv-row-scroll';
+    active.forEach((share, idx) => scroll.appendChild(makeCard(share, idx, false)));
+    group.appendChild(scroll);
+    container.appendChild(group);
+  }
+  if (expired.length) {
+    const group = document.createElement('div');
+    group.className = 'tv-group';
+    group.innerHTML = `<div class="tv-group-header"><h3 style="color:var(--text-3);"><i class="fas fa-clock"></i> Tarjetas expiradas <span class="count">(${expired.length})</span></h3></div>`;
+    const scroll = document.createElement('div');
+    scroll.className = 'tv-row-scroll';
+    expired.forEach((share, idx) => scroll.appendChild(makeCard(share, idx, true)));
+    group.appendChild(scroll);
+    container.appendChild(group);
+  }
   refreshDragScroll();
 }
 async function deleteShare(id) {
@@ -3294,6 +4013,54 @@ function fileToPreviewDoc(file) {
   });
 }
 
+function renderRecipientsInputs(count) {
+  const list = $('recipientsList');
+  if (!list) return;
+  const n = Math.max(1, Math.min(20, parseInt(count, 10) || 1));
+  const existing = [];
+  list.querySelectorAll('.recipient-row').forEach(row => {
+    existing.push({
+      name: row.querySelector('[data-field="name"]')?.value || '',
+      email: row.querySelector('[data-field="email"]')?.value || ''
+    });
+  });
+  list.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const prev = existing[i] || { name: '', email: '' };
+    const row = document.createElement('div');
+    row.className = 'recipient-row';
+    row.style.cssText = 'display:grid; grid-template-columns:1fr 1.2fr; gap:10px;';
+    row.innerHTML = `
+      <div class="form-field" style="margin:0;">
+        <label style="font-size:12px;">Nombre ${i + 1}</label>
+        <input type="text" data-field="name" placeholder="Nombre completo" maxlength="80" value="${escapeHtml(prev.name)}">
+      </div>
+      <div class="form-field" style="margin:0;">
+        <label style="font-size:12px;">Correo ${i + 1}</label>
+        <input type="email" data-field="email" placeholder="correo@ejemplo.com" maxlength="120" value="${escapeHtml(prev.email)}">
+      </div>`;
+    list.appendChild(row);
+  }
+}
+
+function collectRecipientsFromForm() {
+  const rows = document.querySelectorAll('#recipientsList .recipient-row');
+  const out = [];
+  const emails = new Set();
+  for (const row of rows) {
+    const name = (row.querySelector('[data-field="name"]')?.value || '').trim();
+    const email = (row.querySelector('[data-field="email"]')?.value || '').trim().toLowerCase();
+    if (!name && !email) continue;
+    if (!name) return { error: 'Todos los destinatarios deben tener nombre.' };
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: `Correo inválido: ${email || '(vacío)'}` };
+    if (emails.has(email)) return { error: `Correo duplicado: ${email}` };
+    emails.add(email);
+    out.push({ name, email });
+  }
+  if (out.length === 0) return { error: 'Agrega al menos un destinatario.' };
+  return { recipients: out };
+}
+
 function openCreateShareModal() {
   if (selectedFiles.length === 0) return;
   editingShareId = null;
@@ -3303,30 +4070,37 @@ function openCreateShareModal() {
   $('shareName').classList.remove('invalid');
   $('nameLockIcon').style.display = 'none';
   $('nameStatusIcon').classList.remove('show');
-  $('sharePassword').value = '';
   $('shareExpiry').value = '24';
   $('shareExpiryUnit').value = 'hours';
   $('shareAccessType').value = 'download';
   $('editDocsSection').classList.add('hidden');
+  const recSec = $('recipientsSection');
+  if (recSec) recSec.classList.remove('hidden');
+  const countEl = $('recipientsCount');
+  if (countEl) countEl.value = '1';
+  renderRecipientsInputs(1);
   $('shareModal').classList.add('active');
   setTimeout(() => $('shareName').focus(), 100);
 }
+
 window.openEditShareModal = function(id) {
   const share = shares.find(s => s.id === id);
   if (!share) return;
   editingShareId = id;
-  tempEditDocs = [...share.documents];
+  tempEditDocs = [...(share.documents || [])];
   $('shareModalTitle').innerHTML = '<i class="fas fa-pen"></i> Editar tarjeta';
   $('shareName').value = share.name;
   $('shareName').classList.remove('invalid');
   $('nameLockIcon').style.display = 'none';
   $('nameStatusIcon').classList.remove('show');
-  $('sharePassword').value = share.password;
   const hoursLeft = Math.max(1, Math.floor((share.expiry - Date.now()) / 3600000));
   $('shareExpiry').value = hoursLeft;
   $('shareExpiryUnit').value = 'hours';
   $('shareAccessType').value = share.accessType;
   $('editDocsSection').classList.remove('hidden');
+  // En edición no se reconfiguran destinatarios (inmunidad de credenciales)
+  const recSec = $('recipientsSection');
+  if (recSec) recSec.classList.add('hidden');
   renderTempDocsList();
   $('shareModal').classList.add('active');
 };
@@ -3393,30 +4167,33 @@ async function resolveDuplicatesInSelectedFiles() {
   return !toRemove.size ? true : selectedFiles.length > 0;
 }
 
-function openShareInviteEmail(share) {
-  if (!share) return;
+function openRecipientInviteEmail(share, recipient) {
+  if (!share || !recipient) return;
   const appName = (config && config.appName) || 'Messenger';
   const expDate = new Date(share.expiry).toLocaleString('es-MX');
   const access = share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar';
   const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
   const pageUrl = location.href.split('#')[0];
-  const subject = encodeURIComponent(`${appName}: documentos compartidos «${share.name}»`);
+  const pin = recipient.pin || '(consultar con el administrador)';
+  const subject = encodeURIComponent(`${appName}: acceso a «${share.name}»`);
   const body = encodeURIComponent(
-    `Hola,\n\n` +
-    `Se ha compartido contigo la tarjeta «${share.name}» en ${appName}.\n\n` +
-    `Cómo acceder:\n` +
+    `Hola ${recipient.name},\n\n` +
+    `Se te ha otorgado acceso a la tarjeta «${share.name}» en ${appName}.\n\n` +
+    `Cómo acceder (primer ingreso):\n` +
     `1. Abre la aplicación: ${pageUrl}\n` +
     `2. Entra como Consultor\n` +
     `3. Abre la tarjeta «${share.name}»\n` +
-    `4. Contraseña: «${share.password}»\n\n` +
+    `4. Selecciona tu nombre: ${recipient.name}\n` +
+    `5. Ingresa tu PIN de un solo uso: ${pin}\n` +
+    `6. Registra tu rostro y/o crea tu contraseña personal\n\n` +
     `Tipo de acceso: ${access}\n` +
     `Vigencia hasta: ${expDate}\n\n` +
     `Documentos:\n${docs}\n\n` +
-    `— Enviado desde ${appName} | Internal Control Engineering \n` +
-    `— Control Interno \n`
+    `Importante: el PIN solo sirve una vez. Después entrarás con tu rostro o tu contraseña personal.\n\n` +
+    `— Enviado desde ${appName} | Internal Control Engineering\n` +
+    `— Control Interno\n`
   );
-  // mailto sin destinatario fijo: el admin elige a quién enviarlo
-  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${encodeURIComponent(recipient.email)}?subject=${subject}&body=${body}`;
 }
 
 function openShareUpdateEmail(share, changes) {
@@ -3429,36 +4206,59 @@ function openShareUpdateEmail(share, changes) {
   const changesList = (changes && changes.length)
     ? changes.map(c => '• ' + c).join('\n')
     : '• Actualización general de la tarjeta';
+  const recipients = (share.recipients || []).filter(r => r.email);
+  if (!recipients.length) return;
+  // Un correo por destinatario registrado o con email (sin secretos)
+  recipients.forEach(rec => {
+    const subject = encodeURIComponent(`${appName}: actualización de tarjeta «${share.name}»`);
+    const body = encodeURIComponent(
+      `Hola ${rec.name},\n\n` +
+      `Se ha actualizado la tarjeta «${share.name}» en ${appName}.\n\n` +
+      `Cambios realizados:\n${changesList}\n\n` +
+      `Tus credenciales de acceso (rostro / contraseña personal) siguen vigentes.\n` +
+      `No se ha modificado tu PIN ni tu contraseña.\n\n` +
+      `Cómo seguir entrando:\n` +
+      `1. Abre la aplicación: ${pageUrl}\n` +
+      `2. Entra como Consultor\n` +
+      `3. Abre la tarjeta «${share.name}» y selecciona tu nombre\n\n` +
+      `Tipo de acceso: ${access}\n` +
+      `Vigencia hasta: ${expDate}\n\n` +
+      `Documentos actuales:\n${docs}\n\n` +
+      `— Enviado desde ${appName} | Internal Control Engineering\n` +
+      `— Control Interno\n`
+    );
+    // Abrir solo el primero automáticamente; el resto se pueden reenviar manualmente
+  });
+  // Abrir el primero
+  const rec = recipients[0];
   const subject = encodeURIComponent(`${appName}: actualización de tarjeta «${share.name}»`);
   const body = encodeURIComponent(
-    `Hola,\n\n` +
+    `Hola ${rec.name},\n\n` +
     `Se ha actualizado la tarjeta «${share.name}» en ${appName}.\n\n` +
     `Cambios realizados:\n${changesList}\n\n` +
-    `Datos actuales para acceder:\n` +
+    `Tus credenciales de acceso (rostro / contraseña personal) siguen vigentes.\n` +
+    `No se ha modificado tu PIN ni tu contraseña.\n\n` +
+    `Cómo seguir entrando:\n` +
     `1. Abre la aplicación: ${pageUrl}\n` +
     `2. Entra como Consultor\n` +
-    `3. Abre la tarjeta «${share.name}»\n` +
-    `4. Contraseña: ${share.password}\n\n` +
+    `3. Abre la tarjeta «${share.name}» y selecciona tu nombre\n\n` +
     `Tipo de acceso: ${access}\n` +
     `Vigencia hasta: ${expDate}\n\n` +
     `Documentos actuales:\n${docs}\n\n` +
-    `— Enviado desde ${appName} | Internal Control Engineering \n` +
-    `— Control Interno \n`
+    `— Enviado desde ${appName} | Internal Control Engineering\n` +
+    `— Control Interno\n`
   );
-  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${encodeURIComponent(rec.email)}?subject=${subject}&body=${body}`;
 }
 
 async function confirmShare() {
   const name = $('shareName').value.trim();
-  const password = $('sharePassword').value;
   const expiryAmount = parseInt($('shareExpiry').value) || 24;
   const expiryUnit = $('shareExpiryUnit').value;
   const accessType = $('shareAccessType').value;
   if (!name) { customAlert('Atención', 'Ingresa un nombre para la tarjeta'); return; }
   const exists = shares.some(s => s.name.toLowerCase() === name.toLowerCase() && s.id !== editingShareId);
   if (exists) { customAlert('Bloqueado', 'Ya existe una tarjeta con ese nombre. Cambia el nombre para continuar.', 'fa-lock'); return; }
-  const pwdError = validateSharePassword(password);
-  if (pwdError) { customAlert('Contraseña no válida', pwdError, 'fa-exclamation-triangle'); return; }
   const hours = expiryUnit === 'days' ? expiryAmount * 24 : expiryAmount;
   const expiry = Date.now() + hours * 60 * 60 * 1000;
   const btn = $('confirmShareBtn');
@@ -3486,40 +4286,41 @@ async function confirmShare() {
       const finalDocs = tempEditDocs.filter((_, i) => !toRemove.has(i));
 
       const changes = [];
-      if (share.name !== name) {
-        changes.push(`Nombre de tarjeta: «${share.name}» → «${name}»`);
-      }
-      if (share.password !== password) {
-        changes.push(`Contraseña actualizada: «${password}»`);
-      }
+      if (share.name !== name) changes.push(`Nombre de tarjeta: «${share.name}» → «${name}»`);
       if (Math.abs((share.expiry || 0) - expiry) > 60000) {
         changes.push(`Nueva vigencia hasta: ${new Date(expiry).toLocaleString('es-MX')}`);
       }
       const prevDocNames = new Set((share.documents || []).map(d => d.name));
       const addedDocs = finalDocs.filter(d => !prevDocNames.has(d.name));
-      if (addedDocs.length > 0) {
-        changes.push(`Documentos agregados: ${addedDocs.map(d => d.name).join(', ')}`);
-      }
+      const removedDocs = [...prevDocNames].filter(n => !finalDocs.some(d => d.name === n));
+      if (addedDocs.length > 0) changes.push(`Documentos agregados: ${addedDocs.map(d => d.name).join(', ')}`);
+      if (removedDocs.length > 0) changes.push(`Documentos eliminados: ${removedDocs.join(', ')}`);
       if (share.accessType !== accessType) {
         changes.push(`Tipo de acceso: ${accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`);
       }
 
       share.name = name;
-      share.password = password;
       share.accessType = accessType;
       share.expiry = expiry;
       share.documents = finalDocs;
-      if (cloudReady) {
-        await cloudUpsertShare(share);
-      } else {
-        showToast('Tarjeta actualizada', 'fa-check');
-      }
+      // recipients intactos (inmunidad)
+      if (cloudReady) await cloudUpsertShare(share);
+      else showToast('Tarjeta actualizada', 'fa-check');
       store.set('shares', shares);
-      if (changes.length > 0) {
-        openShareUpdateEmail(share, changes);
+      if (changes.length > 0) openShareUpdateEmail(share, changes);
+      tooltip.hide();
+      renderAdminRows();
+      renderConsultantView();
+      $('shareModal').classList.remove('active');
+      if (currentDetailShare && currentDetailShare.id === share.id) {
+        currentDetailShare = share;
+        openDetailView(share);
       }
     } else {
       if (selectedFiles.length === 0) { customAlert('Atención', 'No hay archivos seleccionados'); return; }
+      const collected = collectRecipientsFromForm();
+      if (collected.error) { customAlert('Destinatarios', collected.error, 'fa-users'); return; }
+
       await resolveDuplicatesInSelectedFiles();
       if (selectedFiles.length === 0) {
         customAlert('Atención', 'Todos los archivos fueron descartados por ser duplicados.');
@@ -3530,25 +4331,42 @@ async function confirmShare() {
         const dataUrl = await fileToDataUrl(file);
         documents.push({ name: file.name, dataUrl, size: file.size, mimeType: file.type });
       }
+
+      const recipients = collected.recipients.map(r => ({
+        id: null,
+        name: r.name,
+        email: r.email,
+        pin: generatePin(8),
+        pinSent: false,
+        passwordHash: null,
+        faceDescriptor: null,
+        faceThumb: null,
+        registeredAt: null,
+        createdAt: Date.now()
+      }));
+
       let share = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        name, password, accessType, expiry, createdAt: Date.now(), documents
+        name,
+        accessType,
+        expiry,
+        createdAt: Date.now(),
+        documents,
+        recipients
       };
-      if (cloudReady) {
-        share = await cloudUpsertShare(share);
-      }
+      if (cloudReady) share = await cloudUpsertShare(share);
       shares.unshift(share);
       store.set('shares', shares);
       selectedFiles = [];
       renderUploadList();
       if (!cloudReady) showToast('Tarjeta creada', 'fa-check');
-      // Abrir cliente de correo con los datos de la compartición para el consultor
-      openShareInviteEmail(share);
+      tooltip.hide();
+      renderAdminRows();
+      renderConsultantView();
+      $('shareModal').classList.remove('active');
+      // Abrir vista de detalle en modo admin para enviar PINs
+      openDetailView(share);
     }
-    tooltip.hide();
-    renderAdminRows();
-    renderConsultantView();
-    $('shareModal').classList.remove('active');
   } catch (e) {
     console.warn(e);
     hideUploadProgress();
@@ -3586,7 +4404,89 @@ window.removeFaceProfile = async function(id) {
     renderFaceList();
   }
 };
+async function loadRegisteredAccessFromCloud() {
+  if (!cloudReady) return [];
+  try {
+    const { data, error } = await sb.from('recipient_access_log')
+      .select('*').order('enrolled_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('loadRegisteredAccessFromCloud', e);
+    return [];
+  }
+}
+
 function renderIntruderLogs() {
+  const regLog = $('registeredAccessLog');
+  if (regLog) {
+    regLog.innerHTML = '<p style="color:var(--text-3);font-size:13px;">Cargando…</p>';
+    (async () => {
+      const items = [];
+      // 1) Desde shares en memoria (tarjetas activas)
+      shares.filter(s => !isShareExpired(s)).forEach(share => {
+        (share.recipients || []).forEach(rec => {
+          if (rec.passwordHash || rec.faceDescriptor) {
+            items.push({
+              name: rec.name,
+              shareName: share.name,
+              faceThumb: rec.faceThumb,
+              hasFace: !!rec.faceDescriptor,
+              hasPwd: !!rec.passwordHash,
+              at: rec.registeredAt
+            });
+          }
+        });
+      });
+      // 2) Desde recipient_access_log en la nube (otros dispositivos)
+      const cloudRows = await loadRegisteredAccessFromCloud();
+      const activeShareIds = new Set(shares.filter(s => !isShareExpired(s)).map(s => s.id));
+      cloudRows.forEach(row => {
+        if (row.share_id && activeShareIds.size && !activeShareIds.has(row.share_id)) return;
+        const already = items.some(i =>
+          i.name === row.recipient_name && i.shareName === (row.share_name || '')
+        );
+        if (already) {
+          // Completar miniatura si faltaba
+          const it = items.find(i => i.name === row.recipient_name && i.shareName === (row.share_name || ''));
+          if (it && !it.faceThumb && row.face_thumb) it.faceThumb = row.face_thumb;
+          return;
+        }
+        items.push({
+          name: row.recipient_name,
+          shareName: row.share_name || '',
+          faceThumb: row.face_thumb || null,
+          hasFace: !!row.has_face,
+          hasPwd: true,
+          at: row.enrolled_at ? new Date(row.enrolled_at).getTime() : null
+        });
+      });
+
+      if (!regLog) return;
+      regLog.innerHTML = '';
+      if (!items.length) {
+        regLog.innerHTML = '<p style="color:var(--text-3);font-size:13px;">Nadie se ha registrado aún en tarjetas activas.</p>';
+        return;
+      }
+      items.forEach(it => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:10px; background:var(--bg-elev); padding:8px 10px; border-radius:10px;';
+        const img = it.faceThumb
+          ? `<img src="${it.faceThumb}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+          : `<div style="width:40px;height:40px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center;color:var(--accent);flex-shrink:0;"><i class="fas fa-user"></i></div>`;
+        const badge = [it.hasFace ? 'Rostro' : null, it.hasPwd ? 'Clave' : null].filter(Boolean).join(' + ');
+        row.innerHTML = `
+          ${img}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;">${escapeHtml(it.name || '')}</div>
+            <div style="font-size:11px;color:var(--text-3);">Tarjeta: ${escapeHtml(it.shareName || '')}${it.at ? ' · ' + new Date(it.at).toLocaleString('es-MX') : ''}</div>
+          </div>
+          <span style="font-size:11px;color:var(--ok);font-weight:600;">${badge}</span>`;
+        regLog.appendChild(row);
+      });
+    })();
+  }
+
   const log = $('intruderLog');
   if (!log) return;
   log.innerHTML = '';
@@ -3660,6 +4560,13 @@ window.removeIntroLogo = (mode) => {
 };
 
 function setupEventListeners() {
+  // Destinatarios: cantidad dinámica
+  const recCountEl = $('recipientsCount');
+  if (recCountEl) {
+    recCountEl.addEventListener('input', () => renderRecipientsInputs(recCountEl.value));
+    recCountEl.addEventListener('change', () => renderRecipientsInputs(recCountEl.value));
+  }
+
   // File inputs para logos (comprimidos + persistentes)
   const bindLogoUpload = (inputId, key, maxSide = 512) => {
     const el = $(inputId);
@@ -3801,6 +4708,19 @@ function setupEventListeners() {
     config.cameraEnabled = e.target.checked;
     saveConfig();
   };
+  const sessTimeoutEl = $('sessionTimeoutInput');
+  if (sessTimeoutEl) {
+    sessTimeoutEl.value = config.sessionTimeoutMinutes ?? 0;
+    const saveTimeout = () => {
+      const n = parseInt(sessTimeoutEl.value, 10);
+      config.sessionTimeoutMinutes = Number.isFinite(n) && n >= 0 ? n : 0;
+      saveConfig();
+      touchSessionActivity();
+      updateSessionCountdown();
+    };
+    sessTimeoutEl.addEventListener('change', saveTimeout);
+    sessTimeoutEl.addEventListener('blur', saveTimeout);
+  }
   $('logoutBtn').onclick = async () => {
     if (await customConfirm('Cerrar sesión', '¿Deseas salir?')) logoutToCarousel();
   };
