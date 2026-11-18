@@ -1002,11 +1002,9 @@
     <h2 id="shareModalTitle"><i class="fas fa-share-nodes"></i> Crear tarjeta</h2>
     <div class="modal-body-scroll">
       <div class="form-field"><label>Nombre de la tarjeta <span id="nameLockIcon" style="display:none; color:var(--danger); margin-left:5px;"><i class="fas fa-lock"></i> En uso</span></label><input type="text" id="shareName" placeholder="Nombre" maxlength="60"><i class="fas fa-check-circle input-status" id="nameStatusIcon" style="color:var(--ok);"></i></div>
-      <div class="form-row-3">
-        <div class="form-field"><label>Tiempo vigencia</label><input type="number" id="shareExpiry" value="24" min="1" max="3650"></div>
-        <div class="form-field"><label>Unidad</label><select id="shareExpiryUnit"><option value="minutes">Minutos</option><option value="hours" selected>Horas</option><option value="days">Días</option></select></div>
-        <div class="form-field"><label>Tipo acceso</label><select id="shareAccessType"><option value="view">Solo ver</option><option value="download" selected>Ver y descargar</option></select></div>
-      </div>
+      <input type="hidden" id="shareAccessType" value="download">
+      <input type="hidden" id="shareExpiry" value="24">
+      <input type="hidden" id="shareExpiryUnit" value="hours">
       <div id="recipientsSection" style="margin-top:18px; border-top:1px solid var(--line); padding-top:16px;">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
           <h3 style="font-size:15px; font-weight:600; margin:0;"><i class="fas fa-users"></i> Destinatarios</h3>
@@ -1370,19 +1368,33 @@ async function fetchSharesFromCloud() {
         dataUrl: d.public_url || publicUrl(BUCKET_DOCS, d.storage_path),
         addedAt: d.added_at
       }));
+      const rowExp = new Date(row.expiry).getTime();
       let recipients = [];
       try {
         const { data: recs, error: rErr } = await sb.from('share_recipients')
           .select('*').eq('share_id', row.id);
         if (!rErr && recs) {
-          recipients = recs.map(r => mapDbRecipient(r));
+          recipients = recs.map(r => mapDbRecipient(r, rowExp, row.access_type));
         }
       } catch (re) { console.warn('recipients', re); }
+      const effectiveExp = recipients.length
+        ? Math.max(...recipients.map(r => Number(r.expiry) || 0), 0) || rowExp
+        : rowExp;
+      const prevLocalShare = shares.find(s => s.id === row.id);
+      if (prevLocalShare && Array.isArray(prevLocalShare.recipients)) {
+        recipients.forEach(r => {
+          const oldR = prevLocalShare.recipients.find(o => (o.id && o.id === r.id) || (o.email && r.email && o.email.toLowerCase() === r.email.toLowerCase()));
+          if (oldR) {
+            if (Array.isArray(oldR.lastChanges)) r.lastChanges = oldR.lastChanges;
+            if (oldR.hasPendingUpdate) r.hasPendingUpdate = oldR.hasPendingUpdate;
+          }
+        });
+      }
       list.push({
         id: row.id,
         name: row.name,
         accessType: row.access_type,
-        expiry: new Date(row.expiry).getTime(),
+        expiry: effectiveExp,
         createdAt: new Date(row.created_at).getTime(),
         documents,
         recipients
@@ -1453,25 +1465,57 @@ function hideUploadProgress() {
  *  Tabla share_recipients usa: recipient_name, recipient_email, activation_pin_enc, invite_sent
  *  + password_hash, face_descriptor, face_thumb, registered_at (añadidas)
  */
-function mapDbRecipient(r) {
+function mapDbRecipient(r, fallbackShareExpiry, fallbackAccessType) {
   if (!r) return null;
   let desc = r.face_descriptor || null;
   if (desc && typeof desc === 'object' && !Array.isArray(desc)) {
     desc = Object.keys(desc).sort((a, b) => Number(a) - Number(b)).map(k => desc[k]);
   }
   if (Array.isArray(desc)) desc = desc.map(Number);
+  // Decode embedded metadata in activation_pin_enc:
+  // Formats supported: "PIN|EXP_MS|ACCESS", "META:EXP_MS|ACCESS", "PIN|EXP_MS", "EXP:EXP_MS", or plain "PIN"
+  let rawPin = r.activation_pin_enc || r.pin || null;
+  let embeddedExp = null;
+  let embeddedAccess = null;
+  if (rawPin && typeof rawPin === 'string') {
+    if (rawPin.startsWith('META:')) {
+      const parts = rawPin.slice(5).split('|');
+      embeddedExp = Number(parts[0]) || null;
+      if (parts[1] === 'view' || parts[1] === 'download') embeddedAccess = parts[1];
+      rawPin = null;
+    } else if (rawPin.startsWith('EXP:')) {
+      embeddedExp = Number(rawPin.slice(4)) || null;
+      rawPin = null;
+    } else if (rawPin.includes('|')) {
+      const parts = rawPin.split('|');
+      rawPin = parts[0] || null;
+      embeddedExp = Number(parts[1]) || null;
+      if (parts[2] === 'view' || parts[2] === 'download') embeddedAccess = parts[2];
+    }
+  }
+  const dbExp = r.expiry_at ? new Date(r.expiry_at).getTime() : null;
+  const dbAccess = (r.access_type === 'view' || r.access_type === 'download') ? r.access_type : null;
   return {
     id: r.id,
     name: r.recipient_name || r.name || '',
     email: r.recipient_email || r.email || '',
-    pin: r.activation_pin_enc || r.pin || null,
+    pin: rawPin,
     pinSent: !!(r.invite_sent ?? r.pin_sent),
     passwordHash: r.password_hash || null,
     faceDescriptor: Array.isArray(desc) && desc.length === 128 ? desc : null,
     faceThumb: r.face_thumb || null,
     registeredAt: r.registered_at ? new Date(r.registered_at).getTime() : null,
+    expiry: dbExp || embeddedExp || fallbackShareExpiry || null,
+    accessType: dbAccess || embeddedAccess || fallbackAccessType || 'download',
     createdAt: r.created_at ? new Date(r.created_at).getTime() : null
   };
+}
+
+function encodePinWithMeta(pin, expiryMs, accessType) {
+  const exp = Number(expiryMs) || 0;
+  const acc = (accessType === 'view' || accessType === 'download') ? accessType : 'download';
+  if (pin) return `${pin}|${exp}|${acc}`;
+  return `META:${exp}|${acc}`;
 }
 
 function toDbRecipientPayload(rec, shareId) {
@@ -1479,7 +1523,7 @@ function toDbRecipientPayload(rec, shareId) {
     share_id: shareId,
     recipient_name: rec.name,
     recipient_email: rec.email,
-    activation_pin_enc: rec.pin || null,
+    activation_pin_enc: encodePinWithMeta(rec.pin, rec.expiry, rec.accessType),
     invite_sent: !!rec.pinSent,
     password_hash: rec.passwordHash || null,
     face_descriptor: Array.isArray(rec.faceDescriptor) ? rec.faceDescriptor : null,
@@ -1545,11 +1589,12 @@ async function cloudUpsertShare(share) {
   }
   share.documents = uploadedDocs;
 
-  // Destinatarios: sincronizar (no borrar los ya registrados al editar)
+  // Destinatarios: sincronizar SOLO los nuevos o modificados (aislamiento estricto)
   if (Array.isArray(share.recipients)) {
     setUploadProgress(92, 'Sincronizando destinatarios…');
     const { data: existingRecs } = await sb.from('share_recipients')
       .select('id, recipient_email').eq('share_id', share.id);
+    const existingById = new Set((existingRecs || []).map(r => r.id).filter(Boolean));
     const existingByEmail = {};
     (existingRecs || []).forEach(r => {
       const em = (r.recipient_email || '').toLowerCase();
@@ -1557,19 +1602,25 @@ async function cloudUpsertShare(share) {
     });
 
     for (const rec of share.recipients) {
+      // Si el destinatario ya existe en la nube y NO fue modificado (_dirty === false), no tocarlo en Supabase
+      if (rec._dirty === false && (rec.id && existingById.has(rec.id))) {
+        continue;
+      }
       const emailKey = String(rec.email || '').toLowerCase();
+      const targetId = (rec.id && existingById.has(rec.id)) ? rec.id : existingByEmail[emailKey];
       const payload = toDbRecipientPayload(rec, share.id);
-      if (existingByEmail[emailKey]) {
+      if (targetId) {
         const { data: upd, error: uErr } = await sb.from('share_recipients')
-          .update(payload).eq('id', existingByEmail[emailKey]).select().single();
-        if (uErr) console.warn('recipient update', uErr);
-        if (!uErr && upd) rec.id = upd.id;
+          .update(payload).eq('id', targetId).select().single();
+        if (uErr) throw uErr;
+        if (upd) rec.id = upd.id;
         delete existingByEmail[emailKey];
       } else {
         const { data: ins, error: iErr } = await sb.from('share_recipients').insert(payload).select().single();
-        if (iErr) console.warn('recipient insert', iErr);
-        if (!iErr && ins) rec.id = ins.id;
+        if (iErr) throw iErr;
+        if (ins) rec.id = ins.id;
       }
+      delete rec._dirty;
     }
   }
 
@@ -1643,36 +1694,36 @@ async function cloudUpdateRecipient(rec, shareId) {
 }
 
 async function purgeExpiredShareCredentials() {
-  const now = Date.now();
+  let changed = false;
   for (const share of shares) {
-    if (share.expiry && share.expiry < now && Array.isArray(share.recipients) && share.recipients.length) {
-      const hadCreds = share.recipients.some(r => r.passwordHash || r.faceDescriptor || r.faceThumb);
-      if (hadCreds || share.recipients.some(r => r.pin)) {
-        for (const rec of share.recipients) {
+    if (!Array.isArray(share.recipients) || !share.recipients.length) continue;
+    for (const rec of share.recipients) {
+      if (isRecipientExpired(rec, share)) {
+        const hadCreds = !!(rec.passwordHash || rec.faceDescriptor || rec.faceThumb || rec.pin);
+        if (hadCreds) {
           rec.passwordHash = null;
           rec.faceDescriptor = null;
           rec.faceThumb = null;
           rec.pin = null;
           rec.registeredAt = null;
+          changed = true;
           if (cloudReady && rec.id) {
             try {
               await sb.from('share_recipients').update({
                 password_hash: null,
                 face_descriptor: null,
                 face_thumb: null,
-                activation_pin_enc: null,
+                activation_pin_enc: encodePinWithMeta(null, getRecipientExpiry(rec, share), getRecipientAccessType(rec, share)),
                 registered_at: null
               }).eq('id', rec.id);
+              await sb.from('recipient_access_log').delete().eq('share_id', share.id).eq('recipient_id', rec.id);
             } catch (_) {}
           }
         }
-        if (cloudReady) {
-          try { await sb.from('recipient_access_log').delete().eq('share_id', share.id); } catch (_) {}
-        }
-        store.set('shares', shares);
       }
     }
   }
+  if (changed) store.set('shares', shares);
 }
 
 function generatePin(length = 8) {
@@ -1751,8 +1802,64 @@ async function recordIntruderOnce(thumb, method = 'biometric') {
   return entry;
 }
 
+function getRecipientExpiry(rec, share) {
+  if (rec && rec.expiry) {
+    const t = typeof rec.expiry === 'number' ? rec.expiry : new Date(rec.expiry).getTime();
+    if (t > 0) return t;
+  }
+  if (share && share.expiry) {
+    const t = typeof share.expiry === 'number' ? share.expiry : new Date(share.expiry).getTime();
+    if (t > 0) return t;
+  }
+  return 0;
+}
+
+function getRecipientAccessType(rec, share) {
+  if (rec && (rec.accessType === 'view' || rec.accessType === 'download')) return rec.accessType;
+  if (share && (share.accessType === 'view' || share.accessType === 'download')) return share.accessType;
+  return 'download';
+}
+
+function getActiveConsultantRecipient(share) {
+  if (!share || hasAdminAccess) return null;
+  const uid = unlockedShareRecipients[share.id];
+  if (!uid || !Array.isArray(share.recipients)) return null;
+  return share.recipients.find(r => (r.id && r.id === uid) || (r.email && String(r.email).toLowerCase() === String(uid).toLowerCase())) || null;
+}
+
+function getEffectiveAccessType(share) {
+  if (!share) return 'download';
+  if (hasAdminAccess) return share.accessType || 'download';
+  const activeRec = getActiveConsultantRecipient(share);
+  if (activeRec) return getRecipientAccessType(activeRec, share);
+  return share.accessType || 'download';
+}
+
+function isRecipientExpired(rec, share) {
+  const exp = getRecipientExpiry(rec, share);
+  return !exp || Date.now() > exp;
+}
+
+function formatRemainingShort(expMs) {
+  const msLeft = expMs - Date.now();
+  if (msLeft <= 0) return 'Vencido';
+  const totalMins = Math.max(1, Math.ceil(msLeft / 60000));
+  if (totalMins < 60) return `${totalMins} min`;
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hours < 24) return mins > 0 ? `${hours} h ${mins} m` : `${hours} h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days} d ${remHours} h` : `${days} d`;
+}
+
 function isShareExpired(share) {
   if (!share) return true;
+  const recs = Array.isArray(share.recipients) ? share.recipients : [];
+  if (recs.length > 0) {
+    // A card is only completely expired when ALL its recipients have expired
+    return recs.every(r => isRecipientExpired(r, share));
+  }
   const exp = typeof share.expiry === 'number' ? share.expiry : new Date(share.expiry).getTime();
   return !exp || Date.now() > exp;
 }
@@ -1794,6 +1901,7 @@ function kickFromShare(reason, icon) {
 
 /** Si el consultor está viendo una tarjeta que expiró, se eliminó o cambió la clave, sacarlo */
 function enforceConsultantShareAccess() {
+  if (hasAdminAccess) return;
   try {
     const inDetail = $('shareDetailView') && $('shareDetailView').classList.contains('active');
     const inConsultant = $('consultantView') && $('consultantView').classList.contains('active');
@@ -1809,15 +1917,21 @@ function enforceConsultantShareAccess() {
         kickFromShare('expired', 'fa-clock');
         return;
       }
-      // Si el consultor tenía un destinatario desbloqueado y ese destinatario desapareció o cambió su contraseña, expulsar
+      // Si el consultor tenía un destinatario desbloqueado y ese destinatario fue eliminado/revocado, venció su plazo individual o cambió su contraseña, expulsar
       if (!hasAdminAccess) {
         const unlockedId = unlockedShareRecipients[fresh.id];
         if (unlockedId) {
           const still = (fresh.recipients || []).find(r => r.id === unlockedId || r.email === unlockedId);
-          if (!still || (!still.passwordHash && !still.faceDescriptor && !still.pin)) {
+          if (!still) {
             delete unlockedShareRecipients[fresh.id];
             delete unlockedSharePwdHashes[fresh.id];
-            kickFromShare('expired', 'fa-lock');
+            kickFromShare('deleted', 'fa-user-slash');
+            return;
+          }
+          if (isRecipientExpired(still, fresh) || (!still.passwordHash && !still.faceDescriptor && !still.pin)) {
+            delete unlockedShareRecipients[fresh.id];
+            delete unlockedSharePwdHashes[fresh.id];
+            kickFromShare('expired', 'fa-clock');
             return;
           }
           const prevHash = unlockedSharePwdHashes[fresh.id];
@@ -1833,8 +1947,9 @@ function enforceConsultantShareAccess() {
       try {
         $('detailTitle').textContent = fresh.name;
         const recCount = (fresh.recipients || []).length;
-        $('detailSub').textContent = `${(fresh.documents || []).length} documento(s) · ${fresh.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}${recCount ? ' · ' + recCount + ' destinatario(s)' : ''}`;
-        $('downloadZipBtn').style.display = fresh.accessType === 'download' ? '' : 'none';
+        const effAccess = getEffectiveAccessType(fresh);
+        $('detailSub').textContent = `${(fresh.documents || []).length} documento(s) · ${hasAdminAccess ? (recCount + ' destinatario(s)') : (effAccess === 'view' ? 'Solo ver' : 'Ver y descargar')}`;
+        $('downloadZipBtn').style.display = effAccess === 'download' ? '' : 'none';
         renderDetailBody();
       } catch (_) {}
       // Si el documento abierto ya no existe, cerrar visor
@@ -1873,16 +1988,18 @@ function refreshUIFromState() {
   try { renderAdminView(); } catch (_) {}
   try { renderFaceList(); } catch (_) {}
   try { renderIntruderLogs(); } catch (_) {}
-  // Si el admin tiene abierta una tarjeta que se eliminó o expiró, sacarlo al panel
+  // Si el admin tiene abierta una tarjeta que se eliminó, sacarlo al panel (si solo expiró, permitirle verla)
   try {
     if (hasAdminAccess && currentDetailShare && currentDetailShare.id) {
       const fresh = shares.find(s => s.id === currentDetailShare.id);
-      if (!fresh || isShareExpired(fresh)) {
+      if (!fresh) {
         if ($('shareDetailView')?.classList.contains('active')) {
           closeDocViewer();
           currentDetailShare = null;
           enterAdminView();
         }
+      } else {
+        currentDetailShare = fresh;
       }
     }
   } catch (e) { console.warn('refresh admin detail', e); }
@@ -3100,12 +3217,18 @@ function renderConsultantView() {
     card.className = 'tv-card';
     const hue = shareHue(share.name, idx);
     card.style.background = `linear-gradient(145deg, hsl(${hue},65%,55%), hsl(${hue+40},65%,35%))`;
-    const msLeft = share.expiry - Date.now();
+    const activeRec = getActiveConsultantRecipient(share);
+    const cardExp = activeRec ? getRecipientExpiry(activeRec, share) : share.expiry;
+    const msLeft = cardExp - Date.now();
     const hoursLeft = Math.floor(msLeft / 3600000);
     const minsLeft = Math.max(1, Math.ceil(msLeft / 60000));
     const timeLabel = expired ? 'Expirada' : (hoursLeft < 1 ? minsLeft + 'm' : (hoursLeft < 24 ? hoursLeft + 'h' : Math.floor(hoursLeft / 24) + 'd'));
+    const recTypes = new Set((share.recipients || []).map(r => getRecipientAccessType(r, share)));
+    const typeBadgeTxt = activeRec
+      ? (getRecipientAccessType(activeRec, share) === 'view' ? 'Solo ver' : 'Ver y descargar')
+      : (recTypes.size > 1 ? 'Acceso individual' : (recTypes.has('view') ? 'Solo ver' : 'Ver y descargar'));
     card.innerHTML = `
-      <div class="badge-type">${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}</div>
+      <div class="badge-type">${typeBadgeTxt}</div>
       <div class="badge-expiry ${expired || hoursLeft < 24 ? 'urgent' : ''}"><i class="fas fa-clock"></i> ${timeLabel}</div>
       <div class="card-name">${escapeHtml(share.name)}</div>
       <div class="card-meta"><span><i class="fas fa-file"></i> ${share.documents.length} docs</span></div>`;
@@ -3151,14 +3274,17 @@ function openShareForConsultant(share) {
     customAlert('Sin acceso', 'Esta tarjeta no tiene destinatarios configurados.');
     return;
   }
-  // Si ya desbloqueó un destinatario en esta sesión y está registrado, entrar directo
+  // Si ya desbloqueó un destinatario en esta sesión, sigue vigente y está registrado, entrar directo
   const prevId = unlockedShareRecipients[share.id];
   if (prevId) {
     const prev = recipients.find(r => r.id === prevId || String(r.email) === String(prevId));
-    if (prev && (prev.passwordHash || prev.faceDescriptor)) {
+    if (prev && !isRecipientExpired(prev, share) && (prev.passwordHash || prev.faceDescriptor)) {
       unlockedSharePwdHashes[share.id] = prev.passwordHash || null;
       openDetailView(share);
       return;
+    } else {
+      delete unlockedShareRecipients[share.id];
+      delete unlockedSharePwdHashes[share.id];
     }
   }
   showRecipientPicker(share);
@@ -3167,10 +3293,13 @@ function openShareForConsultant(share) {
 function showRecipientPicker(share) {
   const recipients = share.recipients || [];
   const optionsHtml = recipients.map((r, i) => {
-    const status = r.passwordHash || r.faceDescriptor
-      ? '<span style="color:var(--ok);font-size:11px;">Registrado</span>'
-      : (r.pinSent ? '<span style="color:var(--warn);font-size:11px;">PIN enviado</span>' : '<span style="color:var(--text-3);font-size:11px;">Pendiente</span>');
-    return `<button class="btn btn-secondary" style="width:100%; justify-content:space-between; height:auto; padding:12px 16px; border-radius:12px;" data-rec-idx="${i}">
+    const recExp = isRecipientExpired(r, share);
+    const status = recExp
+      ? '<span style="color:var(--danger);font-size:11px;font-weight:600;">Plazo vencido</span>'
+      : (r.passwordHash || r.faceDescriptor
+        ? '<span style="color:var(--ok);font-size:11px;">Registrado</span>'
+        : (r.pinSent ? '<span style="color:var(--warn);font-size:11px;">PIN enviado</span>' : '<span style="color:var(--text-3);font-size:11px;">Pendiente</span>'));
+    return `<button class="btn btn-secondary" style="width:100%; justify-content:space-between; height:auto; padding:12px 16px; border-radius:12px; ${recExp ? 'opacity:.6;' : ''}" data-rec-idx="${i}">
       <span style="font-weight:600;">${escapeHtml(r.name)}</span>${status}
     </button>`;
   }).join('');
@@ -3191,6 +3320,10 @@ function showRecipientPicker(share) {
         const rec = recipients[idx];
         $('customDialogModal').classList.remove('active');
         if (!rec) return;
+        if (isRecipientExpired(rec, share)) {
+          customAlert('Plazo vencido', `Tu plazo de acceso a «${share.name}» ha expirado. Solicita al administrador una nueva vigencia.`, 'fa-clock');
+          return;
+        }
         if (rec.passwordHash || rec.faceDescriptor) {
           showRecipientAuth(share, rec);
         } else {
@@ -3365,13 +3498,16 @@ async function startRecipientRegistration(share, rec) {
   }
 }
 
+let detailLiveTimer = null;
+
 function openDetailView(share) {
   currentDetailShare = share;
   currentDocsView = 'horizontal';
   $('detailTitle').textContent = share.name;
   const recCount = (share.recipients || []).length;
-  $('detailSub').textContent = `${(share.documents || []).length} documento(s) · ${share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}${recCount ? ' · ' + recCount + ' destinatario(s)' : ''}`;
-  $('downloadZipBtn').style.display = share.accessType === 'download' ? '' : 'none';
+  const effAccess = getEffectiveAccessType(share);
+  $('detailSub').textContent = `${(share.documents || []).length} documento(s) · ${hasAdminAccess ? (recCount + ' destinatario(s)') : (effAccess === 'view' ? 'Solo ver' : 'Ver y descargar')}`;
+  $('downloadZipBtn').style.display = effAccess === 'download' ? '' : 'none';
   document.querySelectorAll('#viewSwitcher button').forEach(b => b.classList.toggle('active', b.dataset.view === 'horizontal'));
   $('consultantView').classList.remove('active');
   $('adminView').classList.remove('active');
@@ -3379,9 +3515,101 @@ function openDetailView(share) {
   renderDetailBody();
   startSessionWatch();
   appSession.save();
+
+  if (detailLiveTimer) clearInterval(detailLiveTimer);
+  detailLiveTimer = setInterval(() => {
+    if (currentDetailShare && $('shareDetailView') && $('shareDetailView').classList.contains('active')) {
+      renderDetailBody();
+    } else {
+      clearInterval(detailLiveTimer);
+      detailLiveTimer = null;
+    }
+  }, 10000);
 }
+async function adminRecipientCardAction(share, rec) {
+  if (!share || !rec) return;
+  if (isRecipientExpired(rec, share)) {
+    customAlert('Plazo vencido', `El plazo de ${rec.name} ya expiró. Edita la tarjeta para asignarle una nueva vigencia.`, 'fa-clock');
+    return;
+  }
+  const isRegistered = !!(rec.passwordHash || rec.faceDescriptor);
+  const expStr = new Date(getRecipientExpiry(rec, share)).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+  const accStr = getRecipientAccessType(rec, share) === 'view' ? 'Solo ver' : 'Ver y descargar';
+  const changesSummary = (Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0)
+    ? rec.lastChanges.map(c => `• ${escapeHtml(c)}`).join('<br>')
+    : `• Tipo de acceso: ${accStr}<br>• Vigencia hasta: ${escapeHtml(expStr)}`;
+
+  if (isRegistered) {
+    // Ya registrado: no tiene PIN pendiente, preguntar si desea mandar actualización de cambios
+    const ok = await customConfirm(
+      `Notificar a ${rec.name}`,
+      `${rec.name} ya tiene sus credenciales activas.\n\n¿Deseas enviarle el correo con la actualización de cambios de la tarjeta?\n\nDetalle a enviar:\n` +
+      (Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0 ? rec.lastChanges.map(c => '• ' + c).join('\n') : `• Tipo de acceso: ${accStr}\n• Vigencia hasta: ${expStr}`),
+      false,
+      'Mandar actualización',
+      'Cancelar'
+    );
+    if (ok) {
+      rec.hasPendingUpdate = false;
+      store.set('shares', shares);
+      openRecipientUpdateNotice(share, rec);
+      renderDetailBody();
+    }
+    return;
+  }
+
+  // No registrado aún: preguntar explícitamente si quiere Enviar/Reenviar PIN o Mandar actualización de cambios
+  const pinLabel = rec.pinSent ? 'Reenviar PIN' : 'Enviar PIN';
+  const htmlBody = `
+    <div style="text-align:left; font-size:13.5px; line-height:1.5; color:var(--text-2);">
+      <p style="margin-bottom:10px;">Selecciona qué correo deseas preparar para <strong style="color:var(--text);">${escapeHtml(rec.name)}</strong> (${escapeHtml(rec.email)}):</p>
+      <div style="background:var(--bg-sunk); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:14px; font-size:12.5px;">
+        <strong style="color:var(--text); display:block; margin-bottom:4px;">Información / cambios actuales:</strong>
+        ${changesSummary}
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button type="button" class="btn btn-primary" id="btnActionSendPin" style="width:100%; justify-content:center;">
+          <i class="fas fa-key"></i> ${pinLabel}
+        </button>
+        <button type="button" class="btn btn-secondary" id="btnActionSendUpdate" style="width:100%; justify-content:center;">
+          <i class="fas fa-envelope-open-text"></i> Mandar actualización de cambios
+        </button>
+      </div>
+    </div>
+  `;
+
+  customAlert(`Opciones para ${rec.name}`, htmlBody, 'fa-envelope');
+  setTimeout(() => {
+    const btnPin = $('btnActionSendPin');
+    const btnUpd = $('btnActionSendUpdate');
+    if (btnPin) {
+      btnPin.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $('customDialogModal').classList.remove('active');
+        adminSendRecipientPin(share, rec);
+      };
+    }
+    if (btnUpd) {
+      btnUpd.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $('customDialogModal').classList.remove('active');
+        rec.hasPendingUpdate = false;
+        store.set('shares', shares);
+        openRecipientUpdateNotice(share, rec);
+        renderDetailBody();
+      };
+    }
+  }, 40);
+}
+
 async function adminSendRecipientPin(share, rec) {
   if (!share || !rec) return;
+  if (isRecipientExpired(rec, share)) {
+    customAlert('Plazo vencido', `El plazo de ${rec.name} ya expiró. Edita la tarjeta para asignarle una nueva vigencia antes de enviar o reenviar el PIN.`, 'fa-clock');
+    return;
+  }
   if (rec.passwordHash || rec.faceDescriptor) {
     customAlert('Ya registrado', `${rec.name} ya configuró sus credenciales. No se puede reenviar el PIN.`, 'fa-check-circle');
     return;
@@ -3479,20 +3707,50 @@ function renderDetailBody() {
     grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:6px 4px 20px;';
     share.recipients.forEach((rec, idx) => {
       const card = document.createElement('div');
-      card.style.cssText = 'background:var(--bg-elev); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; transition:.2s;';
-      const status = rec.passwordHash || rec.faceDescriptor
-        ? '<span style="color:var(--ok);font-size:11px;font-weight:600;"><i class="fas fa-check-circle"></i> Registrado</span>'
-        : (rec.pinSent
-          ? '<span style="color:var(--warn);font-size:11px;font-weight:600;"><i class="fas fa-paper-plane"></i> Enviado</span>'
-          : '<span style="color:var(--text-3);font-size:11px;font-weight:600;"><i class="fas fa-hourglass-half"></i> Pendiente</span>');
+      card.style.cssText = 'background:var(--bg-elev); border:1px solid var(--line); border-radius:14px; padding:14px 16px; transition:.2s; display:flex; flex-direction:column; gap:6px;';
+      const recExpired = isRecipientExpired(rec, share);
+      const expMs = getRecipientExpiry(rec, share);
+      const expStr = expMs ? new Date(expMs).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+      const recAcc = getRecipientAccessType(rec, share);
+      const accBadge = recAcc === 'view'
+        ? '<span style="font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:999px; background:var(--warn-soft); color:var(--warn);"><i class="fas fa-eye"></i> Solo ver</span>'
+        : '<span style="font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent);"><i class="fas fa-download"></i> Ver y descargar</span>';
+      const status = recExpired
+        ? '<span style="color:var(--danger);font-size:11px;font-weight:600;"><i class="fas fa-clock"></i> Plazo vencido</span>'
+        : (rec.passwordHash || rec.faceDescriptor
+          ? `<span style="color:var(--ok);font-size:11px;font-weight:600;"><i class="fas fa-check-circle"></i> Activo (${formatRemainingShort(expMs)})</span>`
+          : (rec.pinSent
+            ? `<span style="color:var(--warn);font-size:11px;font-weight:600;"><i class="fas fa-paper-plane"></i> PIN enviado (${formatRemainingShort(expMs)})</span>`
+            : `<span style="color:var(--text-3);font-size:11px;font-weight:600;"><i class="fas fa-hourglass-half"></i> Pendiente (${formatRemainingShort(expMs)})</span>`));
+      
+      const isRegistered = !!(rec.passwordHash || rec.faceDescriptor);
+      const pendingBadge = (!recExpired && rec.hasPendingUpdate)
+        ? `<span style="font-size:10.5px; font-weight:600; color:var(--accent);"><i class="fas fa-bell"></i> Cambios sin notificar</span>`
+        : '';
+      const actionHint = recExpired
+        ? `<div style="margin-top:4px; font-size:11.5px; color:var(--text-3);">Venció: ${escapeHtml(expStr)} · Edita para reactivar</div>`
+        : `<div style="margin-top:4px; font-size:11.5px; color:var(--accent);">Vence: ${escapeHtml(expStr)} · Clic para opciones de correo</div>`;
+
       card.innerHTML = `
-        <div style="font-weight:700; font-size:14px; margin-bottom:4px;">${escapeHtml(rec.name)}</div>
-        <div style="font-size:12px; color:var(--text-3); margin-bottom:8px; word-break:break-all;">${escapeHtml(rec.email)}</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+          <div style="font-weight:700; font-size:14px;">${escapeHtml(rec.name)}</div>
+          ${accBadge}
+        </div>
+        <div style="font-size:12px; color:var(--text-3); word-break:break-all;">${escapeHtml(rec.email)}</div>
         ${status}
-        <div style="margin-top:10px; font-size:12px; color:var(--accent);">${rec.passwordHash || rec.faceDescriptor ? 'Ya registrado' : (rec.pinSent ? 'Clic para reenviar PIN' : 'Clic para enviar PIN')}</div>`;
-      card.onmouseenter = () => { card.style.boxShadow = 'var(--shadow-md)'; card.style.borderColor = 'var(--accent)'; };
-      card.onmouseleave = () => { card.style.boxShadow = ''; card.style.borderColor = 'var(--line)'; };
-      card.onclick = () => adminSendRecipientPin(share, rec);
+        ${pendingBadge}
+        ${actionHint}`;
+
+      if (!recExpired) {
+        card.style.cursor = 'pointer';
+        card.onmouseenter = () => { card.style.boxShadow = 'var(--shadow-md)'; card.style.borderColor = 'var(--accent)'; };
+        card.onmouseleave = () => { card.style.boxShadow = ''; card.style.borderColor = 'var(--line)'; };
+        card.onclick = () => adminRecipientCardAction(share, rec);
+      } else {
+        card.style.cursor = 'pointer';
+        card.style.opacity = '0.82';
+        card.onclick = () => openEditShareModal(share.id);
+      }
       grid.appendChild(card);
     });
     recPanel.appendChild(grid);
@@ -3562,7 +3820,7 @@ function createDocCard(doc, share) {
     <div class="doc-name">${escapeHtml(doc.name)}</div>
     <div class="doc-size">${(doc.size/1024).toFixed(1)} KB</div>`;
   dc.addEventListener('click', () => openDocViewer(doc, share));
-  if (share && share.accessType === 'download') {
+  if (share && getEffectiveAccessType(share) === 'download') {
     const dl = document.createElement('button');
     dl.className = 'doc-dl';
     dl.title = 'Descargar';
@@ -3584,7 +3842,7 @@ function createDocGridItem(doc, share) {
     <div class="doc-name">${escapeHtml(doc.name)}</div>
     <div class="doc-size">${(doc.size/1024).toFixed(1)} KB</div>`;
   dc.addEventListener('click', () => openDocViewer(doc, share));
-  if (share && share.accessType === 'download') {
+  if (share && getEffectiveAccessType(share) === 'download') {
     const dl = document.createElement('button');
     dl.className = 'doc-dl';
     dl.title = 'Descargar';
@@ -3609,7 +3867,7 @@ function createDocListItem(doc, share) {
     <div class="doc-actions"></div>`;
   dc.addEventListener('click', () => openDocViewer(doc, share));
   const actions = dc.querySelector('.doc-actions');
-  if (share.accessType === 'download') {
+  if (getEffectiveAccessType(share) === 'download') {
     const dlBtn = document.createElement('button');
     dlBtn.className = 'icon-btn';
     dlBtn.innerHTML = '<i class="fas fa-download"></i>';
@@ -3627,7 +3885,7 @@ function downloadSingleDoc(doc) {
 async function downloadAllAsZip() {
   const share = currentDetailShare;
   if (!share || share.documents.length === 0) return;
-  if (share.accessType !== 'download') { customAlert('Atención', 'Esta tarjeta es solo de visualización.'); return; }
+  if (getEffectiveAccessType(share) !== 'download') { customAlert('Atención', 'Esta tarjeta es solo de visualización.'); return; }
   if (typeof JSZip === 'undefined') { customAlert('Error', 'No se pudo cargar el generador de ZIP.'); return; }
   const btn = $('downloadZipBtn');
   const originalHTML = btn.innerHTML;
@@ -3724,7 +3982,7 @@ function openDocViewer(doc, share) {
   $('viewerTitle').textContent = doc.name;
   $('viewerSub').textContent = `${(doc.size/1024).toFixed(1)} KB · ${getFileTypeName(doc.name)}`;
   const shareName = share?.name || 'Carga previa (sin compartir)';
-  const isViewOnly = share && share.accessType === 'view';
+  const isViewOnly = share && getEffectiveAccessType(share) === 'view';
   const accessTxt = isViewOnly ? 'Solo ver' : 'Ver y descargar';
   // Acciones: un solo botón Descargar (header) cuando aplica; sin "abrir en pestaña"
   side.innerHTML = `
@@ -3771,6 +4029,7 @@ async function loadDocIntoStage(doc, ext, stage) {
   let blob = null;
   try { blob = await resolveDocBlob(doc); } catch (_) {}
   const isOfficeExt = ['doc','docx','xls','xlsx','ppt','pptx','csv'].includes(ext);
+  const isViewOnlyMode = viewerState && viewerState.share && getEffectiveAccessType(viewerState.share) === 'view';
   const publicUrl = isHttp ? src : null;
   if (['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext)) {
     stage.innerHTML = `<img class="stage-img" src="${esc(src)}" alt="${escapeHtml(doc.name)}" draggable="false"/>`;
@@ -3778,9 +4037,12 @@ async function loadDocIntoStage(doc, ext, stage) {
   }
   if (isOfficeExt && publicUrl) {
     const embed = 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(publicUrl);
+    const sandboxAttr = isViewOnlyMode
+      ? 'sandbox="allow-scripts allow-same-origin allow-forms"'
+      : 'sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"';
     stage.innerHTML = `
       <div class="viewer-banner"><i class="fas fa-info-circle"></i><div><strong>Vista con formato Office</strong>Archivo hospedado en la URL pública. Se renderiza con el visor de Microsoft.</div></div>
-      <iframe class="office-frame" src="${embed}" title="${escapeHtml(doc.name)}"></iframe>`;
+      <iframe class="office-frame" ${sandboxAttr} src="${embed}" title="${escapeHtml(doc.name)}"></iframe>`;
     return;
   }
   if (ext === 'pdf' && blob && window.pdfjsLib) {
@@ -3820,17 +4082,7 @@ async function loadDocIntoStage(doc, ext, stage) {
   }
   if (['doc','docx'].includes(ext) && blob) {
     stage.innerHTML = '<div class="locked-state"><div><div class="e-icon"><i class="fas fa-spinner fa-spin"></i></div><div class="tiny">Renderizando Word…</div></div></div>';
-    if (window.mammoth && ext === 'docx') {
-      try {
-        const buf = await blob.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
-        if (result && result.value) {
-          stage.innerHTML = `<div class="paper">${result.value}</div>`;
-          return;
-        }
-      } catch (err) { console.warn('mammoth error', err); }
-    }
-    if (typeof docx !== 'undefined') {
+    if (typeof docx !== 'undefined' && ext === 'docx') {
       try {
         const container = document.createElement('div');
         container.className = 'docx-wrapper';
@@ -3840,6 +4092,16 @@ async function loadDocIntoStage(doc, ext, stage) {
         await docx.renderAsync(buf, container);
         return;
       } catch (err) { console.warn('docx-preview error', err); }
+    }
+    if (window.mammoth && ext === 'docx') {
+      try {
+        const buf = await blob.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        if (result && result.value) {
+          stage.innerHTML = `<div class="paper">${result.value}</div>`;
+          return;
+        }
+      } catch (err) { console.warn('mammoth error', err); }
     }
     stage.innerHTML = renderViewerFallback(doc, 'No se pudo previsualizar este documento Word. Descárgalo para verlo con formato completo.');
     return;
@@ -4152,34 +4414,202 @@ function fileToPreviewDoc(file) {
   });
 }
 
-function renderRecipientsInputs(count) {
+function snapshotRecipientRows() {
   const list = $('recipientsList');
-  if (!list) return;
-  const n = Math.max(1, Math.min(20, parseInt(count, 10) || 1));
-  const existing = [];
+  if (!list) return [];
+  const arr = [];
   list.querySelectorAll('.recipient-row').forEach(row => {
-    existing.push({
+    arr.push({
+      id: row.dataset.recId || null,
+      origEmail: row.dataset.origEmail || '',
       name: row.querySelector('[data-field="name"]')?.value || '',
-      email: row.querySelector('[data-field="email"]')?.value || ''
+      email: row.querySelector('[data-field="email"]')?.value || '',
+      accessType: row.querySelector('[data-field="accessType"]')?.value || 'download',
+      expiryAmount: row.querySelector('[data-field="expiryAmount"]')?.value || '24',
+      expiryUnit: row.querySelector('[data-field="expiryUnit"]')?.value || 'hours',
+      existingExpiry: row.dataset.existingExpiry ? Number(row.dataset.existingExpiry) : null,
+      keepExistingExpiry: row.querySelector('[data-field="keepExpiry"]')?.checked ?? false,
+      keepExpired: row.querySelector('[data-field="keepExpired"]')?.checked ?? true,
+      wasRegistered: row.dataset.wasRegistered === '1'
     });
   });
-  list.innerHTML = '';
-  for (let i = 0; i < n; i++) {
-    const prev = existing[i] || { name: '', email: '' };
-    const row = document.createElement('div');
-    row.className = 'recipient-row';
-    row.style.cssText = 'display:grid; grid-template-columns:1fr 1.2fr; gap:10px;';
-    row.innerHTML = `
+  return arr;
+}
+
+function buildRecipientRowElement(prev, index, totalCount) {
+  const isExisting = !!(prev.existingExpiry);
+  const isExpired = isExisting && prev.existingExpiry <= Date.now();
+  const expFormatted = isExisting
+    ? new Date(prev.existingExpiry).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' })
+    : '';
+
+  let statusPill = '';
+  if (isExisting && !isExpired) {
+    statusPill = `<span style="font-size:11px; font-weight:600; color:var(--ok);"><i class="fas fa-check-circle"></i> Activo · vence ${escapeHtml(expFormatted)}</span>`;
+  } else if (isExpired) {
+    statusPill = `<span style="font-size:11px; font-weight:600; color:var(--danger);"><i class="fas fa-clock"></i> Desactivado / vencido (${escapeHtml(expFormatted)})</span>`;
+  }
+
+  // Si está activo: opción de conservar plazo actual. Si está vencido: opción de mantener vencido/desactivado (no reactivar por accidente).
+  let keepToggleHtml = '';
+  if (isExisting && !isExpired) {
+    keepToggleHtml = `<label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2); cursor:pointer; user-select:none;">
+         <input type="checkbox" data-field="keepExpiry" ${prev.keepExistingExpiry ? 'checked' : ''} style="width:auto; accent-color:var(--accent);">
+         <span>Conservar plazo actual (no modificar)</span>
+       </label>`;
+  } else if (isExpired) {
+    keepToggleHtml = `<label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--danger); cursor:pointer; user-select:none;">
+         <input type="checkbox" data-field="keepExpired" ${prev.keepExpired !== false ? 'checked' : ''} style="width:auto; accent-color:var(--danger);">
+         <span>Mantener vencido / desactivado (no reactivar)</span>
+       </label>`;
+  }
+
+  const row = document.createElement('div');
+  row.className = 'recipient-row';
+  if (prev.id) row.dataset.recId = prev.id;
+  if (prev.origEmail) row.dataset.origEmail = prev.origEmail;
+  if (prev.existingExpiry) row.dataset.existingExpiry = String(prev.existingExpiry);
+  if (prev.wasRegistered) row.dataset.wasRegistered = '1';
+  row.style.cssText = 'background:var(--bg-sunk); border:1px solid var(--line); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px;';
+
+  row.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <strong style="font-size:12.5px; color:var(--text);">Persona ${index + 1}</strong>
+        ${statusPill}
+      </div>
+      <button type="button" class="btn btn-danger btn-sm" data-remove-rec="${index}" title="Eliminar / revocar acceso" style="height:26px; padding:0 10px; font-size:11.5px;">
+        <i class="fas fa-user-minus"></i> Quitar
+      </button>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:8px;">
       <div class="form-field" style="margin:0;">
-        <label style="font-size:12px;">Nombre ${i + 1}</label>
+        <label style="font-size:11.5px;">Nombre</label>
         <input type="text" data-field="name" placeholder="Nombre completo" maxlength="80" value="${escapeHtml(prev.name)}">
       </div>
       <div class="form-field" style="margin:0;">
-        <label style="font-size:12px;">Correo ${i + 1}</label>
+        <label style="font-size:11.5px;">Correo</label>
         <input type="email" data-field="email" placeholder="correo@ejemplo.com" maxlength="120" value="${escapeHtml(prev.email)}">
-      </div>`;
-    list.appendChild(row);
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1.1fr 0.9fr 1fr; gap:8px; align-items:end;">
+      <div class="form-field" style="margin:0;">
+        <label style="font-size:11.5px;">Tipo de acceso</label>
+        <select data-field="accessType">
+          <option value="view" ${prev.accessType === 'view' ? 'selected' : ''}>Solo ver</option>
+          <option value="download" ${prev.accessType !== 'view' ? 'selected' : ''}>Ver y descargar</option>
+        </select>
+      </div>
+      <div class="form-field" data-expiry-field style="margin:0; ${prev.keepExistingExpiry ? 'opacity:.45; pointer-events:none;' : ''}">
+        <label style="font-size:11.5px;">${isExpired ? 'Nueva vigencia' : 'Vigencia'}</label>
+        <input type="number" data-field="expiryAmount" min="1" max="3650" value="${escapeHtml(prev.expiryAmount)}">
+      </div>
+      <div class="form-field" data-expiry-field style="margin:0; ${prev.keepExistingExpiry ? 'opacity:.45; pointer-events:none;' : ''}">
+        <label style="font-size:11.5px;">Unidad</label>
+        <select data-field="expiryUnit">
+          <option value="minutes" ${prev.expiryUnit === 'minutes' ? 'selected' : ''}>Minutos</option>
+          <option value="hours" ${prev.expiryUnit === 'hours' ? 'selected' : ''}>Horas</option>
+          <option value="days" ${prev.expiryUnit === 'days' ? 'selected' : ''}>Días</option>
+        </select>
+      </div>
+    </div>
+    ${keepToggleHtml}`;
+
+  const keepCb = row.querySelector('[data-field="keepExpiry"]');
+  const expFields = row.querySelectorAll('[data-expiry-field]');
+  if (keepCb && expFields.length) {
+    keepCb.onchange = () => {
+      expFields.forEach(el => {
+        el.style.opacity = keepCb.checked ? '.45' : '1';
+        el.style.pointerEvents = keepCb.checked ? 'none' : 'auto';
+      });
+    };
   }
+
+  const delBtn = row.querySelector('[data-remove-rec]');
+  if (delBtn) {
+    delBtn.onclick = () => {
+      const snap = snapshotRecipientRows();
+      if (snap.length <= 1) {
+        customAlert('Atención', 'La tarjeta debe tener al menos un destinatario. Si deseas eliminar toda la tarjeta, usa el botón eliminar tarjeta.');
+        return;
+      }
+      snap.splice(index, 1);
+      const countInput = $('recipientsCount');
+      if (countInput) countInput.value = String(snap.length);
+      renderRecipientsFromSnapshot(snap);
+    };
+  }
+
+  return row;
+}
+
+function renderRecipientsFromSnapshot(snap) {
+  const list = $('recipientsList');
+  if (!list) return;
+  list.innerHTML = '';
+  snap.forEach((item, idx) => {
+    list.appendChild(buildRecipientRowElement(item, idx, snap.length));
+  });
+}
+
+function renderRecipientsInputs(count, prefill) {
+  const list = $('recipientsList');
+  if (!list) return;
+  const n = Math.max(1, Math.min(20, parseInt(count, 10) || 1));
+
+  let existing = [];
+  if (Array.isArray(prefill)) {
+    existing = prefill.map(r => {
+      const expMs = r && r.expiry ? Number(r.expiry) : null;
+      const isActive = !!(expMs && expMs > Date.now());
+      let amt = '24', unit = 'hours';
+      if (isActive) {
+        const msLeft = expMs - Date.now();
+        if (msLeft < 3600000) { amt = String(Math.max(1, Math.ceil(msLeft / 60000))); unit = 'minutes'; }
+        else if (msLeft >= 86400000 && msLeft % 86400000 < 3600000) { amt = String(Math.max(1, Math.round(msLeft / 86400000))); unit = 'days'; }
+        else { amt = String(Math.max(1, Math.ceil(msLeft / 3600000))); unit = 'hours'; }
+      }
+      return {
+        id: r.id || null,
+        origEmail: (r.email || '').toLowerCase(),
+        name: r.name || '',
+        email: r.email || '',
+        accessType: r.accessType || 'download',
+        expiryAmount: amt,
+        expiryUnit: unit,
+        existingExpiry: expMs,
+        keepExistingExpiry: isActive,
+        wasRegistered: !!(r.passwordHash || r.faceDescriptor || r.registeredAt)
+      };
+    });
+  } else {
+    // Si no hay prefill (crear tarjeta nueva), aseguramos que inicie en blanco sin arrastrar datos viejos
+    existing = [];
+  }
+
+  const finalList = [];
+  for (let i = 0; i < n; i++) {
+    finalList.push(existing[i] || {
+      id: null,
+      origEmail: '',
+      name: '',
+      email: '',
+      accessType: 'download',
+      expiryAmount: '24',
+      expiryUnit: 'hours',
+      existingExpiry: null,
+      keepExistingExpiry: false,
+      wasRegistered: false
+    });
+  }
+  renderRecipientsFromSnapshot(finalList);
+}
+
+function computeExpiryTimestamp(amount, unit) {
+  const amt = Math.max(1, parseInt(amount, 10) || 24);
+  const mult = unit === 'days' ? 24 * 60 * 60 * 1000 : (unit === 'minutes' ? 60 * 1000 : 60 * 60 * 1000);
+  return Date.now() + amt * mult;
 }
 
 function collectRecipientsFromForm() {
@@ -4194,7 +4624,39 @@ function collectRecipientsFromForm() {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: `Correo inválido: ${email || '(vacío)'}` };
     if (emails.has(email)) return { error: `Correo duplicado: ${email}` };
     emails.add(email);
-    out.push({ name, email });
+
+    const accessType = row.querySelector('[data-field="accessType"]')?.value || 'download';
+    const keepCb = row.querySelector('[data-field="keepExpiry"]');
+    const keepExpiredCb = row.querySelector('[data-field="keepExpired"]');
+    const existingExp = row.dataset.existingExpiry ? Number(row.dataset.existingExpiry) : null;
+    const isExpired = existingExp && existingExp <= Date.now();
+    
+    let expiryMs;
+    let keptExistingExpiry = false;
+
+    if (isExpired && keepExpiredCb && keepExpiredCb.checked) {
+      // Mantener vencido / desactivado (conserva su fecha original vencida, no reactiva)
+      expiryMs = existingExp;
+      keptExistingExpiry = true;
+    } else if (keepCb && keepCb.checked && existingExp && existingExp > Date.now()) {
+      expiryMs = existingExp;
+      keptExistingExpiry = true;
+    } else {
+      const amt = row.querySelector('[data-field="expiryAmount"]')?.value || '24';
+      const unit = row.querySelector('[data-field="expiryUnit"]')?.value || 'hours';
+      expiryMs = computeExpiryTimestamp(amt, unit);
+    }
+
+    out.push({
+      id: row.dataset.recId || null,
+      origEmail: row.dataset.origEmail || '',
+      name,
+      email,
+      accessType: (accessType === 'view' || accessType === 'download') ? accessType : 'download',
+      expiry: expiryMs,
+      keptExistingExpiry,
+      keepExpired: isExpired && keepExpiredCb && keepExpiredCb.checked
+    });
   }
   if (out.length === 0) return { error: 'Agrega al menos un destinatario.' };
   return { recipients: out };
@@ -4242,9 +4704,16 @@ window.openEditShareModal = function(id) {
   }
   $('shareAccessType').value = share.accessType;
   $('editDocsSection').classList.remove('hidden');
-  // En edición no se reconfiguran destinatarios (inmunidad de credenciales)
   const recSec = $('recipientsSection');
-  if (recSec) recSec.classList.add('hidden');
+  if (recSec) recSec.classList.remove('hidden');
+  const existingRecs = (Array.isArray(share.recipients) ? share.recipients : []).map(r => ({
+    ...r,
+    accessType: getRecipientAccessType(r, share)
+  }));
+  const countEl = $('recipientsCount');
+  const initialCount = Math.max(1, existingRecs.length);
+  if (countEl) countEl.value = String(initialCount);
+  renderRecipientsInputs(initialCount, existingRecs);
   renderTempDocsList();
   $('shareModal').classList.add('active');
 };
@@ -4314,8 +4783,8 @@ async function resolveDuplicatesInSelectedFiles() {
 function openRecipientInviteEmail(share, recipient) {
   if (!share || !recipient) return;
   const appName = (config && config.appName) || 'Messenger';
-  const expDate = new Date(share.expiry).toLocaleString('es-MX');
-  const access = share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar';
+  const expDate = new Date(getRecipientExpiry(recipient, share)).toLocaleString('es-MX');
+  const access = getRecipientAccessType(recipient, share) === 'view' ? 'Solo ver' : 'Ver y descargar';
   const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
   const pageUrl = location.href.split('#')[0];
   const pin = recipient.pin || '(consultar con el administrador)';
@@ -4340,53 +4809,41 @@ function openRecipientInviteEmail(share, recipient) {
   window.location.href = `mailto:${encodeURIComponent(recipient.email)}?subject=${subject}&body=${body}`;
 }
 
-function openShareUpdateEmail(share, changes) {
-  if (!share) return;
+function openRecipientUpdateNotice(share, rec) {
+  if (!share || !rec) return;
   const appName = (config && config.appName) || 'Messenger';
-  const expDate = new Date(share.expiry).toLocaleString('es-MX');
-  const access = share.accessType === 'view' ? 'Solo ver' : 'Ver y descargar';
+  const expDate = new Date(getRecipientExpiry(rec, share)).toLocaleString('es-MX');
+  const access = getRecipientAccessType(rec, share) === 'view' ? 'Solo ver' : 'Ver y descargar';
   const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
   const pageUrl = location.href.split('#')[0];
-  const changesList = (changes && changes.length)
-    ? changes.map(c => '• ' + c).join('\n')
-    : '• Actualización general de la tarjeta';
-  const recipients = (share.recipients || []).filter(r => r.email);
-  if (!recipients.length) return;
-  // Un correo por destinatario registrado o con email (sin secretos)
-  recipients.forEach(rec => {
-    const subject = encodeURIComponent(`${appName}: actualización de tarjeta «${share.name}»`);
-    const body = encodeURIComponent(
-      `Hola ${rec.name},\n\n` +
-      `Se ha actualizado la tarjeta «${share.name}» en ${appName}.\n\n` +
-      `Cambios realizados:\n${changesList}\n\n` +
-      `Tus credenciales de acceso (rostro / contraseña personal) siguen vigentes.\n` +
-      `No se ha modificado tu PIN ni tu contraseña.\n\n` +
-      `Cómo seguir entrando:\n` +
-      `1. Abre la aplicación: ${pageUrl}\n` +
-      `2. Entra como Consultor\n` +
-      `3. Abre la tarjeta «${share.name}» y selecciona tu nombre\n\n` +
-      `Tipo de acceso: ${access}\n` +
-      `Vigencia hasta: ${expDate}\n\n` +
-      `Documentos actuales:\n${docs}\n\n` +
-      `— Enviado desde ${appName} | Internal Control Engineering\n` +
-      `— Control Interno\n`
-    );
-    // Abrir solo el primero automáticamente; el resto se pueden reenviar manualmente
-  });
-  // Abrir el primero
-  const rec = recipients[0];
+
+  const recorded = Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0
+    ? rec.lastChanges
+    : [
+        `Tipo de acceso vigente: ${access}`,
+        `Vigencia hasta: ${expDate}`,
+        'Tus credenciales de acceso siguen vigentes'
+      ];
+  const changesList = recorded.map(c => '• ' + c).join('\n');
+
+  const isRegistered = !!(rec.passwordHash || rec.faceDescriptor);
+  const credNote = isRegistered
+    ? `Tus credenciales de acceso (rostro / contraseña personal) siguen vigentes.\nNo se ha modificado tu PIN ni tu contraseña.`
+    : (rec.pin
+      ? `Aún no has completado tu registro inicial. Tu PIN de un solo uso es: ${rec.pin}`
+      : `Ingresa con tu PIN o credenciales asignadas.`);
+
   const subject = encodeURIComponent(`${appName}: actualización de tarjeta «${share.name}»`);
   const body = encodeURIComponent(
     `Hola ${rec.name},\n\n` +
-    `Se ha actualizado la tarjeta «${share.name}» en ${appName}.\n\n` +
-    `Cambios realizados:\n${changesList}\n\n` +
-    `Tus credenciales de acceso (rostro / contraseña personal) siguen vigentes.\n` +
-    `No se ha modificado tu PIN ni tu contraseña.\n\n` +
-    `Cómo seguir entrando:\n` +
+    `Se ha actualizado la información de la tarjeta «${share.name}» en ${appName}.\n\n` +
+    `Cambios realizados para tu acceso:\n${changesList}\n\n` +
+    `${credNote}\n\n` +
+    `Cómo entrar:\n` +
     `1. Abre la aplicación: ${pageUrl}\n` +
     `2. Entra como Consultor\n` +
     `3. Abre la tarjeta «${share.name}» y selecciona tu nombre\n\n` +
-    `Tipo de acceso: ${access}\n` +
+    `Tipo de acceso actual: ${access}\n` +
     `Vigencia hasta: ${expDate}\n\n` +
     `Documentos actuales:\n${docs}\n\n` +
     `— Enviado desde ${appName} | Internal Control Engineering\n` +
@@ -4412,6 +4869,9 @@ async function confirmShare() {
     if (editingShareId) {
       const share = shares.find(s => s.id === editingShareId);
       if (!share) return;
+      const collected = collectRecipientsFromForm();
+      if (collected.error) { customAlert('Destinatarios', collected.error, 'fa-users'); return; }
+
       const toRemove = new Set();
       for (let i = 0; i < tempEditDocs.length; i++) {
         if (toRemove.has(i)) continue;
@@ -4429,35 +4889,174 @@ async function confirmShare() {
       }
       const finalDocs = tempEditDocs.filter((_, i) => !toRemove.has(i));
 
-      const changes = [];
-      if (share.name !== name) changes.push(`Nombre de tarjeta: «${share.name}» → «${name}»`);
-      if (Math.abs((share.expiry || 0) - expiry) > 60000) {
-        changes.push(`Nueva vigencia hasta: ${new Date(expiry).toLocaleString('es-MX')}`);
-      }
+      const cardChanges = [];
+      if (share.name !== name) cardChanges.push(`Nombre de tarjeta: «${share.name}» → «${name}»`);
       const prevDocNames = new Set((share.documents || []).map(d => d.name));
       const addedDocs = finalDocs.filter(d => !prevDocNames.has(d.name));
       const removedDocs = [...prevDocNames].filter(n => !finalDocs.some(d => d.name === n));
-      if (addedDocs.length > 0) changes.push(`Documentos agregados: ${addedDocs.map(d => d.name).join(', ')}`);
-      if (removedDocs.length > 0) changes.push(`Documentos eliminados: ${removedDocs.join(', ')}`);
-      if (share.accessType !== accessType) {
-        changes.push(`Tipo de acceso: ${accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`);
-      }
+      if (addedDocs.length > 0) cardChanges.push(`Documentos agregados: ${addedDocs.map(d => d.name).join(', ')}`);
+      if (removedDocs.length > 0) cardChanges.push(`Documentos eliminados: ${removedDocs.join(', ')}`);
+
+      const wasCardExpired = isShareExpired(share);
+      const prevRecipients = Array.isArray(share.recipients) ? share.recipients : [];
+      const prevById = new Map(prevRecipients.filter(r => r.id).map(r => [r.id, r]));
+      const prevByEmail = new Map(prevRecipients.map(r => [String(r.email || '').toLowerCase(), r]));
+      const reactivatedIds = [];
+      let anyReactivated = false;
+
+      const updatedRecipients = collected.recipients.map((r) => {
+        const emailKey = String(r.email || '').toLowerCase();
+        const prev = (r.id && prevById.get(r.id))
+          || (r.origEmail && prevByEmail.get(r.origEmail))
+          || prevByEmail.get(emailKey)
+          || null;
+        if (prev) {
+          const prevWasExpired = isRecipientExpired(prev, share);
+          if (!prevWasExpired) {
+            // Active recipient: only modify if something actually changed for THIS recipient
+            const prevExp = getRecipientExpiry(prev, share);
+            const prevAcc = getRecipientAccessType(prev, share);
+            const finalRecExpiry = r.keptExistingExpiry ? prevExp : r.expiry;
+            const expiryChanged = !r.keptExistingExpiry && Math.abs(finalRecExpiry - prevExp) > 15000;
+            const accessChanged = r.accessType !== prevAcc;
+            const nameChanged = r.name !== prev.name;
+            const emailChanged = emailKey !== String(prev.email || '').toLowerCase();
+            const isDirty = expiryChanged || accessChanged || nameChanged || emailChanged;
+
+            const personDiffs = [...cardChanges];
+            if (nameChanged) personDiffs.push(`Nombre actualizado: ${r.name}`);
+            if (emailChanged) personDiffs.push(`Correo actualizado: ${r.email}`);
+            if (accessChanged) personDiffs.push(`Modo de acceso: ${prevAcc === 'view' ? 'Solo ver' : 'Ver y descargar'} → ${r.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`);
+            if (expiryChanged) {
+              const newExpStr = new Date(finalRecExpiry).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+              personDiffs.push(`Nueva vigencia hasta: ${newExpStr}`);
+            }
+
+            if (!isDirty) {
+              // Untouched active recipient: keep exact credentials/expiry/access, only attach card-level changes if any
+              return {
+                ...prev,
+                expiry: prevExp,
+                accessType: prevAcc,
+                lastChanges: personDiffs.length > 0 ? personDiffs : (prev.lastChanges || []),
+                hasPendingUpdate: personDiffs.length > 0 ? true : !!prev.hasPendingUpdate,
+                _dirty: false
+              };
+            }
+            return {
+              ...prev,
+              name: r.name,
+              email: r.email,
+              accessType: r.accessType,
+              expiry: finalRecExpiry,
+              pin: (prev.passwordHash || prev.faceDescriptor) ? null : (prev.pin || generatePin(8)),
+              lastChanges: personDiffs,
+              hasPendingUpdate: true,
+              _dirty: true
+            };
+          } else {
+            // Previously expired/deactivated recipient:
+            // If `r.keepExpired` is true, keep them expired untouched!
+            if (r.keepExpired) {
+              return {
+                ...prev,
+                name: r.name,
+                email: r.email,
+                accessType: r.accessType,
+                expiry: getRecipientExpiry(prev, share),
+                _dirty: false
+              };
+            }
+            // Otherwise, reactivate ONLY this person with their chosen accessType, expiry & fresh PIN
+            anyReactivated = true;
+            if (prev.id) reactivatedIds.push(prev.id);
+            const newExpStr = new Date(r.expiry).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+            const reactivateDiffs = [
+              ...cardChanges,
+              'Acceso reactivado con nuevo PIN',
+              `Modo de acceso: ${r.accessType === 'view' ? 'Solo ver' : 'Ver y descargar'}`,
+              `Nueva vigencia hasta: ${newExpStr}`
+            ];
+            return {
+              id: prev.id || null,
+              name: r.name,
+              email: r.email,
+              accessType: r.accessType,
+              expiry: r.expiry,
+              pin: generatePin(8),
+              pinSent: false,
+              passwordHash: null,
+              faceDescriptor: null,
+              faceThumb: null,
+              registeredAt: null,
+              createdAt: Date.now(),
+              lastChanges: reactivateDiffs,
+              hasPendingUpdate: true,
+              _dirty: true
+            };
+          }
+        }
+        // Brand new recipient added during edit
+        anyReactivated = true;
+        return {
+          id: null,
+          name: r.name,
+          email: r.email,
+          accessType: r.accessType,
+          expiry: r.expiry,
+          pin: generatePin(8),
+          pinSent: false,
+          passwordHash: null,
+          faceDescriptor: null,
+          faceThumb: null,
+          registeredAt: null,
+          createdAt: Date.now(),
+          lastChanges: [...cardChanges, 'Nuevo acceso asignado'],
+          hasPendingUpdate: false,
+          _dirty: true
+        };
+      });
+
+      const activeExpiries = updatedRecipients.filter(u => u.expiry > Date.now()).map(u => Number(u.expiry));
+      const effectiveShareExpiry = activeExpiries.length > 0
+        ? Math.max(...activeExpiries)
+        : Math.max(...updatedRecipients.map(u => Number(u.expiry) || 0), expiry);
 
       share.name = name;
       share.accessType = accessType;
-      share.expiry = expiry;
+      share.expiry = effectiveShareExpiry;
       share.documents = finalDocs;
-      // recipients intactos (inmunidad)
-      if (cloudReady) await cloudUpsertShare(share);
-      else showToast('Tarjeta actualizada', 'fa-check');
+      share.recipients = updatedRecipients;
+
+      if (cloudReady) {
+        // Delete removed/revoked recipients in DB before upserting
+        const keepIds = new Set(updatedRecipients.map(u => u.id).filter(Boolean));
+        const keepEmails = new Set(updatedRecipients.map(u => String(u.email || '').toLowerCase()));
+        const toDeleteIds = prevRecipients
+          .filter(p => p.id && !keepIds.has(p.id) && !keepEmails.has(String(p.email || '').toLowerCase()))
+          .map(p => p.id);
+        for (const rid of toDeleteIds) {
+          try { await sb.from('recipient_access_log').delete().eq('share_id', share.id).eq('recipient_id', rid); } catch (_) {}
+          try { await sb.from('share_recipients').delete().eq('id', rid); } catch (_) {}
+        }
+        for (const rid of reactivatedIds) {
+          try { await sb.from('recipient_access_log').delete().eq('share_id', share.id).eq('recipient_id', rid); } catch (_) {}
+        }
+        await cloudUpsertShare(share);
+      } else {
+        showToast((wasCardExpired || anyReactivated) ? 'Tarjeta actualizada / reactivada' : 'Tarjeta actualizada', 'fa-check');
+      }
+      updatedRecipients.forEach(u => { delete u._dirty; });
       store.set('shares', shares);
-      if (changes.length > 0) openShareUpdateEmail(share, changes);
+      showToast('Cambios guardados. Selecciona cada destinatario para enviarle su correo.', 'fa-check');
       tooltip.hide();
       renderAdminRows();
       renderConsultantView();
       $('shareModal').classList.remove('active');
       if (currentDetailShare && currentDetailShare.id === share.id) {
         currentDetailShare = share;
+        openDetailView(share);
+      } else if (wasCardExpired || anyReactivated) {
         openDetailView(share);
       }
     } else {
@@ -4482,20 +5081,25 @@ async function confirmShare() {
         id: null,
         name: r.name,
         email: r.email,
+        accessType: r.accessType,
+        expiry: r.expiry,
         pin: generatePin(8),
         pinSent: false,
         passwordHash: null,
         faceDescriptor: null,
         faceThumb: null,
         registeredAt: null,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        _dirty: true
       }));
+
+      const effectiveShareExpiry = Math.max(...recipients.map(r => Number(r.expiry) || 0), expiry);
 
       let share = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         name,
         accessType,
-        expiry,
+        expiry: effectiveShareExpiry,
         createdAt: Date.now(),
         documents,
         recipients
@@ -4741,12 +5345,25 @@ window.removeIntroLogo = (mode) => {
 };
 
 function setupEventListeners() {
-  // Destinatarios: cantidad dinámica
+  // Destinatarios: cantidad dinámica y sincronización de vigencia base en tarjetas nuevas
   const recCountEl = $('recipientsCount');
   if (recCountEl) {
     recCountEl.addEventListener('input', () => renderRecipientsInputs(recCountEl.value));
     recCountEl.addEventListener('change', () => renderRecipientsInputs(recCountEl.value));
   }
+  const syncBaseExpiryToRows = () => {
+    if (editingShareId) return;
+    const amt = $('shareExpiry')?.value || '24';
+    const unit = $('shareExpiryUnit')?.value || 'hours';
+    document.querySelectorAll('#recipientsList .recipient-row').forEach(row => {
+      const aEl = row.querySelector('[data-field="expiryAmount"]');
+      const uEl = row.querySelector('[data-field="expiryUnit"]');
+      if (aEl) aEl.value = amt;
+      if (uEl) uEl.value = unit;
+    });
+  };
+  $('shareExpiry')?.addEventListener('input', syncBaseExpiryToRows);
+  $('shareExpiryUnit')?.addEventListener('change', syncBaseExpiryToRows);
 
   // File inputs para logos (comprimidos + persistentes)
   const bindLogoUpload = (inputId, key, maxSide = 512) => {
