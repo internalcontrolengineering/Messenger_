@@ -45,6 +45,9 @@
     --nav-h: 64px;
     --header-logo-size: 32px;
     --header-title-size: 18px;
+    --header-title-color: var(--text);
+    --header-subtitle-size: 12px;
+    --header-subtitle-color: var(--text-2);
     --intro-logo-size: 120px;
     --intro-text-size: 16px;
     --intro-appname-size: 48px;
@@ -148,7 +151,8 @@
   .brand { display: flex; align-items: center; gap: 12px; color: var(--text); line-height: 1.15; background: transparent; border: 0; cursor: pointer; padding: 0; }
   .brand .logo-img { width: var(--header-logo-size) !important; height: var(--header-logo-size) !important; object-fit: contain; flex-shrink: 0; border-radius: 8px; }
   .brand .brand-text { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-width: 0; text-align: left; }
-  .brand .brand-title { display: block; font-weight: 600; font-size: var(--header-title-size) !important; color: var(--text); letter-spacing: -0.03em; line-height: 1.15; }
+  .brand .brand-title { display: block; font-weight: 600; font-size: var(--header-title-size) !important; color: var(--header-title-color, var(--text)); letter-spacing: -0.03em; line-height: 1.15; }
+  .brand .brand-subtitle { display: block; font-weight: 500; font-size: var(--header-subtitle-size, 12px) !important; color: var(--header-subtitle-color, var(--text-2)); letter-spacing: -0.01em; line-height: 1.2; }
   .nav-spacer { flex: 1; }
   .user-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 30px; background: var(--bg-sunk); font-size: 13px; font-weight: 500; white-space: nowrap; }
   .user-badge.admin { background: var(--accent-soft); color: var(--accent); }
@@ -781,6 +785,7 @@
         <img id="headerLogo" class="logo-img hidden" src="" alt="logo">
         <span class="brand-text">
           <span class="brand-title" id="headerTitle">Messenger</span>
+          <span class="brand-subtitle hidden" id="headerSubtitle"></span>
         </span>
       </div>
       <div class="nav-spacer"></div>
@@ -876,6 +881,23 @@
           <h3><i class="fas fa-palette"></i> Apariencia</h3>
           <div class="settings-row"><div class="label-group"><strong>Nombre de la app</strong><span>Se muestra en la cabecera</span></div><div class="control"><input type="text" id="appNameInput" placeholder="Configura el nombre"></div></div>
           <div class="settings-row"><div class="label-group"><strong>Tamaño del nombre app</strong><span id="headerTitleSizeVal">18px</span></div><div class="control"><input type="range" id="headerTitleSizeInput" min="12" max="96" value="18"></div></div>
+          <div class="settings-row">
+            <div class="label-group"><strong>Color del título</strong><span>Color del nombre de la app en el encabezado</span></div>
+            <div class="control" style="display:flex; align-items:center; gap:8px;">
+              <input type="color" id="headerTitleColorInput" value="#1d1d1f">
+              <button type="button" class="btn btn-secondary btn-sm" id="resetHeaderTitleColorBtn" title="Restaurar color automático según tema">Auto</button>
+            </div>
+          </div>
+
+          <div class="settings-row"><div class="label-group"><strong>Subtítulo del encabezado</strong><span>Se muestra debajo del título</span></div><div class="control"><input type="text" id="headerSubtitleInput" placeholder="Configura el subtitulo"></div></div>
+          <div class="settings-row"><div class="label-group"><strong>Tamaño del subtítulo</strong><span id="headerSubtitleSizeVal">12px</span></div><div class="control"><input type="range" id="headerSubtitleSizeInput" min="10" max="48" value="12"></div></div>
+          <div class="settings-row">
+            <div class="label-group"><strong>Color del subtítulo</strong><span>Color del texto debajo del título</span></div>
+            <div class="control" style="display:flex; align-items:center; gap:8px;">
+              <input type="color" id="headerSubtitleColorInput" value="#6e6e73">
+              <button type="button" class="btn btn-secondary btn-sm" id="resetHeaderSubtitleColorBtn" title="Restaurar color automático según tema">Auto</button>
+            </div>
+          </div>
           
           <div class="settings-row"><div class="label-group"><strong>Color de acento</strong><span>Afecta botones y detalles</span></div><div class="control"><input type="color" id="accentColorInput" value="#0071e3"></div></div>
           <div class="settings-row"><div class="label-group"><strong>Tema</strong><span>Claro, oscuro o automático (6:00 - 18:00 claro, resto oscuro)</span></div><div class="control"><select id="themeSelect"><option value="auto">Automático</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></div></div>
@@ -1163,6 +1185,10 @@ const DEFAULT_CONFIG = {
   headerLogoDark: null,
   headerLogoSize: 32,
   headerTitleSize: 18,
+  headerTitleColor: '',
+  headerSubtitle: '',
+  headerSubtitleSize: 12,
+  headerSubtitleColor: '',
   introLogoLight: null,
   introLogoDark: null,
   introLogoSize: 120,
@@ -1183,6 +1209,10 @@ config.headerLogoLight = config.headerLogoLight ?? config.logoDataUrl ?? null;
 config.headerLogoDark = config.headerLogoDark ?? null;
 config.headerLogoSize = config.headerLogoSize ?? config.logoSize ?? 32;
 config.headerTitleSize = config.headerTitleSize ?? config.titleSize ?? 18;
+config.headerTitleColor = config.headerTitleColor ?? '';
+config.headerSubtitle = config.headerSubtitle ?? '';
+config.headerSubtitleSize = config.headerSubtitleSize ?? 12;
+config.headerSubtitleColor = config.headerSubtitleColor ?? '';
 config.introLogoLight = config.introLogoLight ?? config.logoDataUrl ?? null;
 config.introLogoDark = config.introLogoDark ?? null;
 config.introLogoSize = config.introLogoSize ?? 120;
@@ -2480,6 +2510,7 @@ function applyConfig() {
   const accent = config.accentColor || '#0071e3';
   const hLogo = Number(config.headerLogoSize) || 32;
   const hTitle = Number(config.headerTitleSize) || 18;
+  const hSubSize = Number(config.headerSubtitleSize) || 12;
   const iLogo = Number(config.introLogoSize) || 120;
   const iText = Number(config.introTextSize) || 16;
   const iApp = Number(config.introAppNameSize) || 48;
@@ -2488,6 +2519,7 @@ function applyConfig() {
 
   config.headerLogoSize = hLogo;
   config.headerTitleSize = hTitle;
+  config.headerSubtitleSize = hSubSize;
   config.introLogoSize = iLogo;
   config.introTextSize = iText;
   config.introAppNameSize = iApp;
@@ -2497,11 +2529,23 @@ function applyConfig() {
 
   document.documentElement.style.setProperty('--header-logo-size', hLogo + 'px');
   document.documentElement.style.setProperty('--header-title-size', hTitle + 'px');
+  document.documentElement.style.setProperty('--header-subtitle-size', hSubSize + 'px');
+  if (config.headerTitleColor) {
+    document.documentElement.style.setProperty('--header-title-color', config.headerTitleColor);
+  } else {
+    document.documentElement.style.removeProperty('--header-title-color');
+  }
+  if (config.headerSubtitleColor) {
+    document.documentElement.style.setProperty('--header-subtitle-color', config.headerSubtitleColor);
+  } else {
+    document.documentElement.style.removeProperty('--header-subtitle-color');
+  }
   document.documentElement.style.setProperty('--intro-logo-size', iLogo + 'px');
   document.documentElement.style.setProperty('--intro-text-size', iText + 'px');
   document.documentElement.style.setProperty('--intro-appname-size', iApp + 'px');
 
-  const navH = Math.max(64, hLogo + 24);
+  const hasSub = !!(config.headerSubtitle && String(config.headerSubtitle).trim());
+  const navH = Math.max(64, hLogo + 24, (hTitle + (hasSub ? hSubSize + 6 : 0)) + 28);
   document.documentElement.style.setProperty('--nav-h', navH + 'px');
 
   try { applyTheme(config.theme || 'auto'); } catch (e) { console.warn(e); }
@@ -2509,6 +2553,11 @@ function applyConfig() {
   applyAccentColor(accent);
 
   setVal('appNameInput', config.appName || '');
+  setVal('headerSubtitleInput', config.headerSubtitle || '');
+  setVal('headerTitleColorInput', config.headerTitleColor || (document.body.getAttribute('data-theme') === 'dark' ? '#f5f5f7' : '#1d1d1f'));
+  setVal('headerSubtitleColorInput', config.headerSubtitleColor || (document.body.getAttribute('data-theme') === 'dark' ? '#a1a1a6' : '#6e6e73'));
+  setVal('headerSubtitleSizeInput', hSubSize);
+  setVal('headerSubtitleSizeVal', hSubSize + 'px');
   setVal('introTextInput', config.introText || '');
   setVal('themeSelect', config.theme || 'auto');
   setVal('accentColorInput', accent);
@@ -2574,6 +2623,23 @@ function applyTheme(theme) {
     }
   }
   if (headerTitleEl && config.appName) headerTitleEl.textContent = config.appName;
+  const headerSubtitleEl = $('headerSubtitle');
+  if (headerSubtitleEl) {
+    const subTxt = (config.headerSubtitle || '').trim();
+    if (subTxt) {
+      headerSubtitleEl.textContent = subTxt;
+      headerSubtitleEl.classList.remove('hidden');
+    } else {
+      headerSubtitleEl.textContent = '';
+      headerSubtitleEl.classList.add('hidden');
+    }
+  }
+  if (!config.headerTitleColor && $('headerTitleColorInput')) {
+    $('headerTitleColorInput').value = dark ? '#f5f5f7' : '#1d1d1f';
+  }
+  if (!config.headerSubtitleColor && $('headerSubtitleColorInput')) {
+    $('headerSubtitleColorInput').value = dark ? '#a1a1a6' : '#6e6e73';
+  }
 
   if (themeAutoTimer) { clearInterval(themeAutoTimer); themeAutoTimer = null; }
   if (themeMediaListener) {
@@ -5436,7 +5502,60 @@ function setupEventListeners() {
     el.addEventListener('blur', save);
   };
   bindTextSave('appNameInput', 'appName', true);
+  bindTextSave('headerSubtitleInput', 'headerSubtitle', true);
   bindTextSave('introTextInput', 'introText', false);
+
+  const subInputEl = $('headerSubtitleInput');
+  if (subInputEl) {
+    subInputEl.addEventListener('input', () => {
+      config.headerSubtitle = subInputEl.value;
+      const el = $('headerSubtitle');
+      if (el) {
+        const txt = subInputEl.value.trim();
+        el.textContent = txt;
+        el.classList.toggle('hidden', !txt);
+      }
+      saveConfig();
+    });
+  }
+
+  const titleColorEl = $('headerTitleColorInput');
+  if (titleColorEl) {
+    titleColorEl.oninput = (e) => {
+      config.headerTitleColor = e.target.value;
+      document.documentElement.style.setProperty('--header-title-color', config.headerTitleColor);
+      saveConfig();
+    };
+  }
+  const resetTitleColorBtn = $('resetHeaderTitleColorBtn');
+  if (resetTitleColorBtn) {
+    resetTitleColorBtn.onclick = () => {
+      config.headerTitleColor = '';
+      document.documentElement.style.removeProperty('--header-title-color');
+      const isDark = document.body.getAttribute('data-theme') === 'dark';
+      if (titleColorEl) titleColorEl.value = isDark ? '#f5f5f7' : '#1d1d1f';
+      saveConfig();
+    };
+  }
+
+  const subColorEl = $('headerSubtitleColorInput');
+  if (subColorEl) {
+    subColorEl.oninput = (e) => {
+      config.headerSubtitleColor = e.target.value;
+      document.documentElement.style.setProperty('--header-subtitle-color', config.headerSubtitleColor);
+      saveConfig();
+    };
+  }
+  const resetSubColorBtn = $('resetHeaderSubtitleColorBtn');
+  if (resetSubColorBtn) {
+    resetSubColorBtn.onclick = () => {
+      config.headerSubtitleColor = '';
+      document.documentElement.style.removeProperty('--header-subtitle-color');
+      const isDark = document.body.getAttribute('data-theme') === 'dark';
+      if (subColorEl) subColorEl.value = isDark ? '#a1a1a6' : '#6e6e73';
+      saveConfig();
+    };
+  }
 
   $('accentColorInput').oninput = (e) => {
     config.accentColor = e.target.value;
@@ -5463,6 +5582,7 @@ function setupEventListeners() {
       // Aplica CSS en vivo
       if (key === 'headerLogoSize') document.documentElement.style.setProperty('--header-logo-size', n + 'px');
       if (key === 'headerTitleSize') document.documentElement.style.setProperty('--header-title-size', n + 'px');
+      if (key === 'headerSubtitleSize') document.documentElement.style.setProperty('--header-subtitle-size', n + 'px');
       if (key === 'introLogoSize') document.documentElement.style.setProperty('--intro-logo-size', n + 'px');
       if (key === 'introTextSize') document.documentElement.style.setProperty('--intro-text-size', n + 'px');
       if (key === 'introAppNameSize') document.documentElement.style.setProperty('--intro-appname-size', n + 'px');
@@ -5476,6 +5596,7 @@ function setupEventListeners() {
   };
   bindSize('headerLogoSizeInput', 'headerLogoSizeVal', 'headerLogoSize');
   bindSize('headerTitleSizeInput', 'headerTitleSizeVal', 'headerTitleSize');
+  bindSize('headerSubtitleSizeInput', 'headerSubtitleSizeVal', 'headerSubtitleSize');
   bindSize('introLogoSizeInput', 'introLogoSizeVal', 'introLogoSize');
   bindSize('introTextSizeInput', 'introTextSizeVal', 'introTextSize');
   bindSize('introAppNameSizeInput', 'introAppNameSizeVal', 'introAppNameSize');
