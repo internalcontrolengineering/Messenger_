@@ -8,7 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -817,7 +816,7 @@
           <div class="dz-icon"><i class="fas fa-cloud-upload-alt"></i></div>
           <strong>Arrastra uno o varios archivos aquí</strong>
           <div class="tiny" style="margin-top:6px;">o haz clic para seleccionar · luego crea la tarjeta</div>
-          <input type="file" id="fileInput" multiple style="display:none;">
+          <input type="file" id="fileInput" multiple accept="*/*" style="display:none;">
         </div>
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <div class="tiny" style="font-weight:500">Haz clic en una tarjeta para previsualizar el archivo antes de compartir.</div>
@@ -1024,7 +1023,7 @@
         <div class="edit-doc-list" id="editDocList"></div>
         <div class="dropzone" id="editDropZone" style="padding:20px; margin-bottom:0;">
           <div style="font-size:13px; font-weight:500; color:var(--text-2);"><i class="fas fa-plus"></i> Arrastra más archivos o haz clic aquí</div>
-          <input type="file" id="editFileInput" multiple style="display:none;">
+          <input type="file" id="editFileInput" multiple accept="*/*" style="display:none;">
         </div>
       </div>
     </div>
@@ -1514,7 +1513,11 @@ async function cloudUpsertShare(share) {
     setUploadProgress(5 + (i - 1) / total * 85, label);
     let storagePath = doc.storagePath;
     let pub = doc.dataUrl;
-    if (doc.dataUrl && String(doc.dataUrl).startsWith('data:')) {
+    if (doc.rawFile instanceof Blob) {
+      const safeName = String(doc.name).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120);
+      storagePath = `${share.id}/${Date.now()}_${safeName}`;
+      pub = await uploadFileBlob(BUCKET_DOCS, storagePath, doc.rawFile, doc.mimeType || doc.rawFile.type);
+    } else if (doc.dataUrl && String(doc.dataUrl).startsWith('data:')) {
       const safeName = String(doc.name).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120);
       storagePath = `${share.id}/${Date.now()}_${safeName}`;
       pub = await uploadDataUrl(BUCKET_DOCS, storagePath, doc.dataUrl);
@@ -2319,7 +2322,6 @@ async function init() {
       try { enforceConsultantShareAccess(); } catch (_) {}
       try { purgeExpiredShareCredentials(); } catch (_) {}
     }, 15000);
-    try { await ensureFaceApi(); } catch (e) { console.warn('Face API no disponible'); }
     refreshDragScroll();
     try {
       if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -2794,10 +2796,31 @@ function stopSessionWatch() {
 }
 
 function isValidFaceTemplate(t) { return Array.isArray(t) && t.length === 128 && t.every(n => typeof n === 'number' && Number.isFinite(n)); }
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === '1') return resolve();
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('No se pudo cargar ' + src)), { once: true });
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => { s.dataset.loaded = '1'; resolve(); };
+    s.onerror = () => reject(new Error('No se pudo cargar ' + src));
+    document.head.appendChild(s);
+  });
+}
+
 async function ensureFaceApi() {
   if (faceApiReady) return true;
   if (faceApiLoading) return faceApiLoading;
   faceApiLoading = (async () => {
+    if (typeof faceapi === 'undefined') {
+      await loadExternalScript('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js');
+    }
     if (typeof faceapi === 'undefined') throw new Error('face-api.js no cargó');
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL),
@@ -2872,7 +2895,8 @@ function openFaceScanOverlay(mode) {
     if (frameEl0) frameEl0.classList.remove('ok', 'deny');
     try {
       await ensureFaceApi();
-      faceStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } });
+      const isMob = window.innerWidth <= 768;
+      faceStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: isMob ? 640 : 1280 }, height: { ideal: isMob ? 480 : 720 }, facingMode: 'user' } });
       const video = $('faceScanVideo');
       video.srcObject = faceStream;
       await new Promise(res => { if (video.readyState >= 2) return res(); video.onloadedmetadata = () => res(); });
@@ -3651,6 +3675,9 @@ function closeDocViewer() {
   const root = $('docViewerRoot');
   root.classList.remove('active');
   if (viewerState.objectUrl) { URL.revokeObjectURL(viewerState.objectUrl); viewerState.objectUrl = null; }
+  if (viewerState.doc && viewerState.doc._isBlobUrl && viewerState.doc.dataUrl) {
+    try { URL.revokeObjectURL(viewerState.doc.dataUrl); } catch (_) {}
+  }
   viewerState = { doc: null, share: null, objectUrl: null };
 }
 $('viewerCloseBtn').onclick = closeDocViewer;
@@ -3721,10 +3748,11 @@ function openDocViewer(doc, share) {
 }
 
 async function resolveDocBlob(doc) {
+  if (doc && doc.rawFile instanceof Blob) return doc.rawFile;
   const src = doc && (doc.dataUrl || doc.url || '');
   if (!src) return null;
   if (String(src).startsWith('data:')) return dataUrlToBlob(src);
-  if (/^https?:\/\//i.test(src)) {
+  if (/^(https?|blob):/i.test(src)) {
     try {
       const res = await fetch(src);
       if (!res.ok) return null;
@@ -3869,10 +3897,29 @@ async function loadDocIntoStage(doc, ext, stage) {
     stage.innerHTML = renderViewerFallback(doc, 'No se pudo previsualizar el PowerPoint. Descárgalo para verlo con formato completo.');
     return;
   }
+  if ((ext === 'html' || ext === 'htm') && !blob && isHttp) {
+    stage.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.className = 'stage-frame';
+    iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+    iframe.title = doc.name;
+    iframe.src = src;
+    stage.appendChild(iframe);
+    return;
+  }
   if (['txt','md','html','htm','json','xml','drawio','csv'].includes(ext) && blob) {
     try {
       const text = await blob.text();
-      if (ext === 'html' || ext === 'htm') stage.innerHTML = `<div class="paper">${text}</div>`;
+      if (ext === 'html' || ext === 'htm') {
+        stage.innerHTML = '';
+        const iframe = document.createElement('iframe');
+        iframe.className = 'stage-frame';
+        iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+        iframe.title = doc.name;
+        iframe.srcdoc = text;
+        stage.appendChild(iframe);
+        return;
+      }
       else if (ext === 'json') {
         let pretty = text;
         try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch(e){}
@@ -4094,10 +4141,14 @@ function createUploadCard(file, groupKey) {
 }
 
 function fileToPreviewDoc(file) {
-  return new Promise((resolve) => {
-    const r = new FileReader();
-    r.onload = (e) => resolve({ name: file.name, dataUrl: e.target.result, size: file.size, lastModified: file.lastModified });
-    r.readAsDataURL(file);
+  const objUrl = URL.createObjectURL(file);
+  return Promise.resolve({
+    name: file.name,
+    dataUrl: objUrl,
+    _isBlobUrl: true,
+    rawFile: file,
+    size: file.size,
+    lastModified: file.lastModified
   });
 }
 
@@ -4419,11 +4470,13 @@ async function confirmShare() {
         customAlert('Atención', 'Todos los archivos fueron descartados por ser duplicados.');
         return;
       }
-      const documents = [];
-      for (const file of selectedFiles) {
-        const dataUrl = await fileToDataUrl(file);
-        documents.push({ name: file.name, dataUrl, size: file.size, mimeType: file.type });
-      }
+      const documents = selectedFiles.map(file => ({
+        name: file.name,
+        rawFile: file,
+        dataUrl: cloudReady ? null : URL.createObjectURL(file),
+        size: file.size,
+        mimeType: file.type
+      }));
 
       const recipients = collected.recipients.map(r => ({
         id: null,
@@ -4881,34 +4934,25 @@ function setupEventListeners() {
   editDz.onclick = () => editFi.click();
   editDz.ondragover = (e) => { e.preventDefault(); editDz.classList.add('drag'); };
   editDz.ondragleave = () => editDz.classList.remove('drag');
-  editDz.ondrop = async (e) => {
-    e.preventDefault(); editDz.classList.remove('drag');
-    const files = Array.from(e.dataTransfer.files);
+  const addFilesToEditDocs = async (fileList) => {
+    const files = Array.from(fileList || []);
     for (const f of files) {
-      const dataUrl = await fileToDataUrl(f);
       const dupIdx = findDuplicateIndex(tempEditDocs, f.name);
       if (dupIdx !== -1) {
         const { ok, nextName } = await askDuplicate(f.name, tempEditDocs);
-        if (ok) tempEditDocs.push({ name: nextName, dataUrl, size: f.size });
+        if (ok) tempEditDocs.push({ name: nextName, rawFile: f, dataUrl: cloudReady ? null : URL.createObjectURL(f), size: f.size, mimeType: f.type });
       } else {
-        tempEditDocs.push({ name: f.name, dataUrl, size: f.size });
+        tempEditDocs.push({ name: f.name, rawFile: f, dataUrl: cloudReady ? null : URL.createObjectURL(f), size: f.size, mimeType: f.type });
       }
     }
     renderTempDocsList();
   };
+  editDz.ondrop = async (e) => {
+    e.preventDefault(); editDz.classList.remove('drag');
+    await addFilesToEditDocs(e.dataTransfer.files);
+  };
   editFi.onchange = async (e) => {
-    const files = Array.from(e.target.files);
-    for (const f of files) {
-      const dataUrl = await fileToDataUrl(f);
-      const dupIdx = findDuplicateIndex(tempEditDocs, f.name);
-      if (dupIdx !== -1) {
-        const { ok, nextName } = await askDuplicate(f.name, tempEditDocs);
-        if (ok) tempEditDocs.push({ name: nextName, dataUrl, size: f.size });
-      } else {
-        tempEditDocs.push({ name: f.name, dataUrl, size: f.size });
-      }
-    }
-    renderTempDocsList();
+    await addFilesToEditDocs(e.target.files);
     editFi.value = '';
   };
 
