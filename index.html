@@ -790,13 +790,33 @@
 </div>
 <div class="doc-tooltip" id="docTooltip" role="tooltip" aria-hidden="true"></div>
 
-<div id="introOverlay" class="pre-hidden">
+<div id="introOverlay" style="background:#000; opacity:1; visibility:visible;">
   <div class="intro-content" id="introContent">
     <img class="intro-logo animate" id="introLogo" alt="Logo intro" style="display:none;">
     <div class="intro-text" id="introText" style="display:none;"></div>
   </div>
   <div class="intro-appname" id="introAppName"></div>
 </div>
+<script>
+  (function() {
+    try {
+      var sess = JSON.parse(sessionStorage.getItem('fs_app_session') || 'null');
+      var ov = document.getElementById('introOverlay');
+      if (!ov) return;
+      if (sess && sess.role) {
+        ov.classList.add('off');
+        ov.classList.remove('pre-hidden', 'hidden');
+        ov.style.display = 'none';
+      } else {
+        ov.classList.remove('pre-hidden', 'off', 'hidden');
+        ov.style.display = 'flex';
+        ov.style.background = '#000';
+        ov.style.opacity = '1';
+        ov.style.visibility = 'visible';
+      }
+    } catch (e) {}
+  })();
+</script>
 
 <div class="app-shell">
   <header class="nav">
@@ -2414,21 +2434,31 @@ function customPrompt(title, text, defaultValue = '') {
     $('customDialogIcon').innerHTML = '<i class="fas fa-pen"></i>';
     $('customDialogTitle').textContent = title;
     $('customDialogText').textContent = text;
-    $('customDialogInput').value = defaultValue;
-    $('customDialogInput').classList.remove('hidden');
+    const inp = $('customDialogInput');
+    inp.setAttribute('autocomplete', 'off');
+    inp.setAttribute('autocorrect', 'off');
+    inp.setAttribute('autocapitalize', 'off');
+    inp.setAttribute('spellcheck', 'false');
+    inp.name = 'dlg_' + Date.now();
+    inp.value = defaultValue;
+    inp.classList.remove('hidden');
     $('customDialogCancel').classList.remove('hidden');
     $('customDialogOk').textContent = 'Guardar';
     $('customDialogOk').className = 'btn btn-primary';
     $('customDialogModal').classList.add('active');
-    setTimeout(() => $('customDialogInput').focus(), 100);
+    setTimeout(() => inp.focus(), 100);
   });
 }
 $('customDialogOk').onclick = () => {
-  const val = $('customDialogInput').classList.contains('hidden') ? true : $('customDialogInput').value;
+  const inp = $('customDialogInput');
+  const val = inp.classList.contains('hidden') ? true : inp.value;
+  inp.value = '';
   $('customDialogModal').classList.remove('active');
   if (dialogResolve) dialogResolve(val);
 };
 $('customDialogCancel').onclick = () => {
+  const inp = $('customDialogInput');
+  inp.value = '';
   $('customDialogModal').classList.remove('active');
   if (dialogResolve) dialogResolve(null);
 };
@@ -2769,6 +2799,8 @@ function checkIntro() {
     }
 
     overlay.classList.remove('off', 'pre-hidden', 'hidden');
+    overlay.style.display = 'flex';
+    overlay.style.background = '#000';
     overlay.style.opacity = '1';
     overlay.style.visibility = 'visible';
 
@@ -3363,6 +3395,23 @@ function validateSharePassword(pwd) {
   return null;
 }
 
+function validateSharePin(pin) {
+  const val = String(pin ?? '');
+  if (!val) return 'Ingresa el PIN de un solo uso.';
+  const hasBefore = /^\s/.test(val);
+  const hasAfter = /\s$/.test(val);
+  const trimmed = val.replace(/^\s+|\s+$/g, '');
+  const hasBetween = /\s/.test(trimmed);
+  if (hasBefore || hasAfter || hasBetween) {
+    const pos = [];
+    if (hasBefore) pos.push('antes');
+    if (hasBetween) pos.push('entre');
+    if (hasAfter) pos.push('después');
+    return `El PIN no debe contener espacios (se detectó un espacio ${pos.join(' y ')} del PIN).`;
+  }
+  return null;
+}
+
 function openShareForConsultant(share) {
   if (!share || isShareExpired(share)) {
     customAlert('Expirada', 'Esta tarjeta ha caducado o ya no está disponible.', 'fa-clock').then(() => {
@@ -3436,15 +3485,75 @@ function showRecipientPicker(share) {
   }, 50);
 }
 
-function showRecipientPinEntry(share, rec) {
-  customPrompt('PIN de un solo uso', `Hola ${rec.name}, ingresa el PIN que recibiste por correo:`).then(async pin => {
+function showRecipientPinEntry(share, rec, prefillVal = '') {
+  const inp = $('customDialogInput');
+  let activePinPrompt = true;
+
+  const cleanupPinListeners = () => {
+    activePinPrompt = false;
+    if (inp) {
+      inp.removeEventListener('paste', onPinPaste);
+      inp.removeEventListener('input', onPinInput);
+    }
+  };
+
+  const triggerSpaceAlert = (badVal, errMsg) => {
+    if (!activePinPrompt) return;
+    cleanupPinListeners();
+    $('customDialogModal').classList.remove('active');
+    dialogResolve = null;
+    customAlert('PIN no válido', errMsg, 'fa-exclamation-triangle').then(() => {
+      showRecipientPinEntry(share, rec, badVal);
+    });
+  };
+
+  const onPinPaste = () => {
+    // Esperar un tick para que el texto pegado quede dentro del input antes de lanzar el aviso
+    setTimeout(() => {
+      if (!activePinPrompt || !inp) return;
+      const val = inp.value;
+      if (/\s/.test(val)) {
+        const errMsg = validateSharePin(val) || 'El PIN no debe contener espacios (antes, entre o después).';
+        triggerSpaceAlert(val, errMsg);
+      }
+    }, 0);
+  };
+
+  const onPinInput = () => {
+    if (!inp) return;
+    const val = inp.value;
+    if (/\s/.test(val)) {
+      const errMsg = validateSharePin(val) || 'El PIN no debe contener espacios (antes, entre o después).';
+      triggerSpaceAlert(val, errMsg);
+    }
+  };
+
+  if (inp) {
+    inp.addEventListener('paste', onPinPaste);
+    inp.addEventListener('input', onPinInput);
+  }
+
+  customPrompt('PIN de un solo uso', `Hola ${rec.name}, ingresa el PIN que recibiste por correo (sin espacios):`, prefillVal).then(async pin => {
+    cleanupPinListeners();
+    if (inp) inp.value = '';
     if (pin === null) return;
-    const entered = String(pin).trim().toUpperCase();
+    const spaceErr = validateSharePin(pin);
+    if (spaceErr) {
+      customAlert('PIN no válido', spaceErr, 'fa-exclamation-triangle').then(() => {
+        showRecipientPinEntry(share, rec, pin);
+      });
+      return;
+    }
+    const entered = String(pin).toUpperCase();
     if (!rec.pin || entered !== String(rec.pin).toUpperCase()) {
       customAlert('PIN incorrecto', 'El PIN no coincide. Verifica el correo o pide un reenvío al administrador.', 'fa-times-circle');
       return;
     }
-    // PIN válido → registro de credenciales
+    // PIN válido → limpiar campo por completo para no recordarse en otros usuarios y continuar registro
+    if (inp) {
+      inp.value = '';
+      inp.name = 'dlg_cleared_' + Date.now();
+    }
     await startRecipientRegistration(share, rec);
   });
 }
@@ -3635,18 +3744,27 @@ async function adminRecipientCardAction(share, rec) {
     return;
   }
   const isRegistered = !!(rec.passwordHash || rec.faceDescriptor);
+  const hasRecordedChanges = Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0;
+  const wasEdited = !!(rec.hasPendingUpdate || hasRecordedChanges || share.wasEdited);
   const expStr = new Date(getRecipientExpiry(rec, share)).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
   const accStr = getRecipientAccessType(rec, share) === 'view' ? 'Solo ver' : 'Ver y descargar';
-  const changesSummary = (Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0)
+
+  // Si es tarjeta recién creada (sin ediciones) y aún no está registrado: ir directo a enviar/reenviar PIN con correo de nueva tarjeta
+  if (!wasEdited && !isRegistered) {
+    adminSendRecipientPin(share, rec);
+    return;
+  }
+
+  const changesSummary = hasRecordedChanges
     ? rec.lastChanges.map(c => `• ${escapeHtml(c)}`).join('<br>')
     : `• Tipo de acceso: ${accStr}<br>• Vigencia hasta: ${escapeHtml(expStr)}`;
 
   if (isRegistered) {
-    // Ya registrado: no tiene PIN pendiente, preguntar si desea mandar actualización de cambios
+    // Ya registrado: preguntar si desea mandar el correo de actualización de cambios
     const ok = await customConfirm(
-      `Notificar a ${rec.name}`,
-      `${rec.name} ya tiene sus credenciales activas.\n\n¿Deseas enviarle el correo con la actualización de cambios de la tarjeta?\n\nDetalle a enviar:\n` +
-      (Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0 ? rec.lastChanges.map(c => '• ' + c).join('\n') : `• Tipo de acceso: ${accStr}\n• Vigencia hasta: ${expStr}`),
+      `Notificar actualización a ${rec.name}`,
+      `${rec.name} ya tiene sus credenciales activas.\n\n¿Deseas enviarle el correo de actualización con los cambios realizados?\n\nCambios a notificar:\n` +
+      (hasRecordedChanges ? rec.lastChanges.map(c => '• ' + c).join('\n') : `• Tipo de acceso: ${accStr}\n• Vigencia hasta: ${expStr}`),
       false,
       'Mandar actualización',
       'Cancelar'
@@ -3660,13 +3778,13 @@ async function adminRecipientCardAction(share, rec) {
     return;
   }
 
-  // No registrado aún: preguntar explícitamente si quiere Enviar/Reenviar PIN o Mandar actualización de cambios
-  const pinLabel = rec.pinSent ? 'Reenviar PIN' : 'Enviar PIN';
+  // Tarjeta editada y persona aún no registrada: preguntar explícitamente si desea Enviar/Reenviar PIN o Mandar actualización de cambios
+  const pinLabel = rec.pinSent ? 'Reenviar PIN (invitación inicial)' : 'Enviar PIN (invitación inicial)';
   const htmlBody = `
     <div style="text-align:left; font-size:13.5px; line-height:1.5; color:var(--text-2);">
-      <p style="margin-bottom:10px;">Selecciona qué correo deseas preparar para <strong style="color:var(--text);">${escapeHtml(rec.name)}</strong> (${escapeHtml(rec.email)}):</p>
+      <p style="margin-bottom:10px;">Esta tarjeta fue editada. Elige qué tipo de correo deseas enviar a <strong style="color:var(--text);">${escapeHtml(rec.name)}</strong> (${escapeHtml(rec.email)}):</p>
       <div style="background:var(--bg-sunk); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:14px; font-size:12.5px;">
-        <strong style="color:var(--text); display:block; margin-bottom:4px;">Información / cambios actuales:</strong>
+        <strong style="color:var(--text); display:block; margin-bottom:4px;">Cambios registrados en la tarjeta:</strong>
         ${changesSummary}
       </div>
       <div style="display:flex; flex-direction:column; gap:8px;">
@@ -3680,7 +3798,7 @@ async function adminRecipientCardAction(share, rec) {
     </div>
   `;
 
-  customAlert(`Opciones para ${rec.name}`, htmlBody, 'fa-envelope');
+  customAlert(`Opciones de correo · ${rec.name}`, htmlBody, 'fa-envelope');
   setTimeout(() => {
     const btnPin = $('btnActionSendPin');
     const btnUpd = $('btnActionSendUpdate');
@@ -3829,9 +3947,12 @@ function renderDetailBody() {
       const pendingBadge = (!recExpired && rec.hasPendingUpdate)
         ? `<span style="font-size:10.5px; font-weight:600; color:var(--accent);"><i class="fas fa-bell"></i> Cambios sin notificar</span>`
         : '';
+      const hasRecChanges = !!(rec.hasPendingUpdate || (Array.isArray(rec.lastChanges) && rec.lastChanges.length > 0) || share.wasEdited);
       const actionHint = recExpired
         ? `<div style="margin-top:4px; font-size:11.5px; color:var(--text-3);">Venció: ${escapeHtml(expStr)} · Edita para reactivar</div>`
-        : `<div style="margin-top:4px; font-size:11.5px; color:var(--accent);">Vence: ${escapeHtml(expStr)} · Clic para opciones de correo</div>`;
+        : (hasRecChanges
+          ? `<div style="margin-top:4px; font-size:11.5px; color:var(--accent);">Vence: ${escapeHtml(expStr)} · Clic para opciones de correo</div>`
+          : `<div style="margin-top:4px; font-size:11.5px; color:var(--accent);">Vence: ${escapeHtml(expStr)} · Clic para ${rec.pinSent ? 'reenviar' : 'enviar'} PIN</div>`);
 
       card.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
@@ -4638,7 +4759,10 @@ function buildRecipientRowElement(prev, index, totalCount) {
       }
       snap.splice(index, 1);
       const countInput = $('recipientsCount');
-      if (countInput) countInput.value = String(snap.length);
+      if (countInput) {
+        countInput.min = String(Math.max(1, snap.length));
+        countInput.value = String(snap.length);
+      }
       renderRecipientsFromSnapshot(snap);
     };
   }
@@ -4658,7 +4782,8 @@ function renderRecipientsFromSnapshot(snap) {
 function renderRecipientsInputs(count, prefill) {
   const list = $('recipientsList');
   if (!list) return;
-  const n = Math.max(1, Math.min(20, parseInt(count, 10) || 1));
+  const countInput = $('recipientsCount');
+  let requested = Math.max(1, Math.min(20, parseInt(count, 10) || 1));
 
   let existing = [];
   if (Array.isArray(prefill)) {
@@ -4682,12 +4807,20 @@ function renderRecipientsInputs(count, prefill) {
         expiryUnit: unit,
         existingExpiry: expMs,
         keepExistingExpiry: isActive,
+        keepExpired: true,
         wasRegistered: !!(r.passwordHash || r.faceDescriptor || r.registeredAt)
       };
     });
   } else {
-    // Si no hay prefill (crear tarjeta nueva), aseguramos que inicie en blanco sin arrastrar datos viejos
-    existing = [];
+    // Conservar intactas todas las filas actuales (datos, accesos y configuraciones previas)
+    existing = snapshotRecipientRows();
+  }
+
+  // No permitir reducir cantidad desde el campo numérico; solo se puede eliminar con el botón "Quitar"
+  const n = Math.max(existing.length, requested, 1);
+  if (countInput) {
+    countInput.min = String(Math.max(1, existing.length));
+    countInput.value = String(n);
   }
 
   const finalList = [];
@@ -4702,6 +4835,7 @@ function renderRecipientsInputs(count, prefill) {
       expiryUnit: 'hours',
       existingExpiry: null,
       keepExistingExpiry: false,
+      keepExpired: true,
       wasRegistered: false
     });
   }
@@ -4779,8 +4913,10 @@ function openCreateShareModal() {
   $('editDocsSection').classList.add('hidden');
   const recSec = $('recipientsSection');
   if (recSec) recSec.classList.remove('hidden');
+  const listEl = $('recipientsList');
+  if (listEl) listEl.innerHTML = '';
   const countEl = $('recipientsCount');
-  if (countEl) countEl.value = '1';
+  if (countEl) { countEl.min = '1'; countEl.value = '1'; }
   renderRecipientsInputs(1);
   $('shareModal').classList.add('active');
   setTimeout(() => $('shareName').focus(), 100);
@@ -4812,9 +4948,11 @@ window.openEditShareModal = function(id) {
     ...r,
     accessType: getRecipientAccessType(r, share)
   }));
+  const listEl = $('recipientsList');
+  if (listEl) listEl.innerHTML = '';
   const countEl = $('recipientsCount');
   const initialCount = Math.max(1, existingRecs.length);
-  if (countEl) countEl.value = String(initialCount);
+  if (countEl) { countEl.min = String(initialCount); countEl.value = String(initialCount); }
   renderRecipientsInputs(initialCount, existingRecs);
   renderTempDocsList();
   $('shareModal').classList.add('active');
@@ -4890,21 +5028,22 @@ function openRecipientInviteEmail(share, recipient) {
   const docs = (share.documents || []).map(d => '• ' + d.name).join('\n') || '• (sin documentos)';
   const pageUrl = location.href.split('#')[0];
   const pin = recipient.pin || '(consultar con el administrador)';
-  const subject = encodeURIComponent(`${appName}: acceso a «${share.name}»`);
+  const subject = encodeURIComponent(`${appName}: Nuevo Contenedor de Documentos Compartidos «${share.name}» con PIN de acceso`);
   const body = encodeURIComponent(
     `Hola ${recipient.name},\n\n` +
-    `Se te ha otorgado acceso a la tarjeta «${share.name}» en ${appName}.\n\n` +
-    `Cómo acceder (primer ingreso):\n` +
+    `Se ha creado un nuevo contenedor de documentos compartidos para ti: «${share.name}» en ${appName}.\n\n` +
+    `Tu PIN de activación (un solo uso): ${pin}\n\n` +
+    `Instrucciones para tu primer ingreso:\n` +
     `1. Abre la aplicación: ${pageUrl}\n` +
-    `2. Entra como Consultor\n` +
-    `3. Abre la tarjeta «${share.name}»\n` +
-    `4. Selecciona tu nombre: ${recipient.name}\n` +
-    `5. Ingresa tu PIN de un solo uso: ${pin}\n` +
-    `6. Registra tu rostro y/o crea tu contraseña personal\n\n` +
-    `Tipo de acceso: ${access}\n` +
-    `Vigencia hasta: ${expDate}\n\n` +
-    `Documentos:\n${docs}\n\n` +
-    `Importante: el PIN solo sirve una vez. Después entrarás con tu rostro o tu contraseña personal.\n\n` +
+    `2. Selecciona el perfil Consultor\n` +
+    `3. Ingresa al nuevo contenedor «${share.name}»\n` +
+    `4. Selecciona tu nombre (${recipient.name}) e introduce el PIN: ${pin}\n` +
+    `5. Configura tu reconocimiento facial y/o contraseña personal\n\n` +
+    `Condiciones de tu acceso:\n` +
+    `• Permisos: ${access}\n` +
+    `• Vigencia hasta: ${expDate}\n\n` +
+    `Documentos compartidos:\n${docs}\n\n` +
+    `Nota: Este PIN es personal y de un solo uso; una vez activado tu acceso, ingresarás con tu rostro o contraseña personal.\n\n` +
     `— Enviado desde ${appName} | Internal Control Engineering\n` +
     `— Control Interno\n`
   );
@@ -4935,16 +5074,16 @@ function openRecipientUpdateNotice(share, rec) {
       ? `Aún no has completado tu registro inicial. Tu PIN de un solo uso es: ${rec.pin}`
       : `Ingresa con tu PIN o credenciales asignadas.`);
 
-  const subject = encodeURIComponent(`${appName}: actualización de tarjeta «${share.name}»`);
+  const subject = encodeURIComponent(`${appName}: Actualización del Contenedor de Documentos Compartidos «${share.name}»`);
   const body = encodeURIComponent(
     `Hola ${rec.name},\n\n` +
-    `Se ha actualizado la información de la tarjeta «${share.name}» en ${appName}.\n\n` +
+    `Se ha actualizado la información de tu contenedor de documentos compartidos «${share.name}» en ${appName}.\n\n` +
     `Cambios realizados para tu acceso:\n${changesList}\n\n` +
     `${credNote}\n\n` +
     `Cómo entrar:\n` +
     `1. Abre la aplicación: ${pageUrl}\n` +
     `2. Entra como Consultor\n` +
-    `3. Abre la tarjeta «${share.name}» y selecciona tu nombre\n\n` +
+    `3. Abre el contenedor «${share.name}» y selecciona tu nombre\n\n` +
     `Tipo de acceso actual: ${access}\n` +
     `Vigencia hasta: ${expDate}\n\n` +
     `Documentos actuales:\n${docs}\n\n` +
@@ -5129,6 +5268,7 @@ async function confirmShare() {
       share.expiry = effectiveShareExpiry;
       share.documents = finalDocs;
       share.recipients = updatedRecipients;
+      share.wasEdited = true;
 
       if (cloudReady) {
         // Delete removed/revoked recipients in DB before upserting
@@ -5450,8 +5590,19 @@ function setupEventListeners() {
   // Destinatarios: cantidad dinámica y sincronización de vigencia base en tarjetas nuevas
   const recCountEl = $('recipientsCount');
   if (recCountEl) {
-    recCountEl.addEventListener('input', () => renderRecipientsInputs(recCountEl.value));
-    recCountEl.addEventListener('change', () => renderRecipientsInputs(recCountEl.value));
+    const handleCountIncrease = () => {
+      const currentSnap = snapshotRecipientRows();
+      const rawVal = parseInt(recCountEl.value, 10);
+      if (!Number.isFinite(rawVal)) return;
+      if (rawVal < currentSnap.length) {
+        recCountEl.value = String(currentSnap.length);
+        showToast('Para eliminar una persona usa su botón "Quitar"', 'fa-info-circle');
+        return;
+      }
+      renderRecipientsInputs(rawVal);
+    };
+    recCountEl.addEventListener('input', handleCountIncrease);
+    recCountEl.addEventListener('change', handleCountIncrease);
   }
   const syncBaseExpiryToRows = () => {
     if (editingShareId) return;
