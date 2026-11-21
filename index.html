@@ -3109,6 +3109,28 @@ function faceCaptureThumb(video) {
     return c.toDataURL('image/jpeg', 0.72);
   } catch(e) { return null; }
 }
+
+function estimateYawRatio(landmarks) {
+  if (!landmarks || !landmarks.positions || landmarks.positions.length < 17) return 0.5;
+  const pts = landmarks.positions;
+  const leftEdge = pts[0];
+  const rightEdge = pts[16];
+  const noseTip = pts[30];
+  if (!leftEdge || !rightEdge || !noseTip) return 0.5;
+  const distLeft = Math.hypot(noseTip.x - leftEdge.x, noseTip.y - leftEdge.y);
+  const distRight = Math.hypot(rightEdge.x - noseTip.x, rightEdge.y - noseTip.y);
+  const total = distLeft + distRight || 1;
+  return distLeft / total;
+}
+
+async function detectFaceWithYaw(video) {
+  if (!video || video.readyState < 2) return null;
+  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 });
+  const det = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
+  if (!det || !det.descriptor) return null;
+  return { descriptor: Array.from(det.descriptor), yawRatio: estimateYawRatio(det.landmarks) };
+}
+
 async function detectFaceDescriptor(video) {
   if (!video || video.readyState < 2) return null;
   const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 });
@@ -3155,6 +3177,13 @@ function openFaceScanOverlay(mode) {
       if (status) status.textContent = (isAdminReg || isRecipientReg) ? 'Detectando rostro…' : 'Buscando rostro…';
       const samples = []; let lastDetectAt = 0; let registerFinished = false; let unlockFinished = false;
       let intruderLoggedThisScan = false; // una sola foto por sesión de escaneo denegado
+      let seenLeftProfile = false; let seenRightProfile = false;
+      const YAW_LEFT_THRESHOLD = 0.43; const YAW_RIGHT_THRESHOLD = 0.57;
+      const isVerifyMode = (!isAdminReg && !isRecipientReg);
+      if (isVerifyMode && status) {
+        status.className = 'face-scan-status';
+        status.textContent = 'Gira levemente a perfil izquierdo y derecho (cualquier orden).';
+      }
       const loop = async () => {
         if (!faceScanResolve || registerFinished || unlockFinished) return;
         faceRaf = requestAnimationFrame(() => { loop(); });
@@ -3162,7 +3191,9 @@ function openFaceScanOverlay(mode) {
         if (now - lastDetectAt < FACE_DETECT_INTERVAL_MS) return;
         lastDetectAt = now;
         try {
-          const desc = await detectFaceDescriptor(video);
+          const detData = await detectFaceWithYaw(video);
+          const desc = detData ? detData.descriptor : null;
+          const yawRatio = detData && typeof detData.yawRatio === 'number' ? detData.yawRatio : 0.5;
           if (!desc) { faceMatchStreak = 0; if (status) status.textContent = 'No se detecta rostro.'; return; }
           // Registro de destinatario: captura descriptor + thumb, NO toca rostros de admin
           if (isRecipientReg) {
@@ -3215,10 +3246,24 @@ function openFaceScanOverlay(mode) {
             }
             const dist = faceDescriptorDistance(desc, target);
             if (dist <= FACE_MATCH_THRESHOLD) {
-              faceMatchStreak++; faceFailStreak = 0;
+              faceFailStreak = 0;
+              if (yawRatio <= YAW_LEFT_THRESHOLD) seenLeftProfile = true;
+              if (yawRatio >= YAW_RIGHT_THRESHOLD) seenRightProfile = true;
+              if (!seenLeftProfile || !seenRightProfile) {
+                faceMatchStreak = 0;
+                if (frameEl) frameEl.classList.remove('ok', 'deny');
+                if (status) {
+                  status.className = 'face-scan-status warn';
+                  if (seenLeftProfile && !seenRightProfile) status.textContent = 'Perfil izquierdo listo · gira levemente al perfil derecho';
+                  else if (!seenLeftProfile && seenRightProfile) status.textContent = 'Perfil derecho listo · gira levemente al perfil izquierdo';
+                  else status.textContent = 'Gira levemente a perfil izquierdo y derecho (cualquier orden)';
+                }
+                return;
+              }
+              faceMatchStreak++;
               if (status) {
                 status.className = 'face-scan-status ok';
-                status.innerHTML = `<i class="fas fa-check-circle"></i> Rostro reconocido`;
+                status.innerHTML = `<i class="fas fa-check-circle"></i> Rostro y perfiles verificados`;
               }
               if (frameEl) { frameEl.classList.add('ok'); frameEl.classList.remove('deny'); }
               if (faceMatchStreak >= FACE_MATCH_STREAK_NEED && !unlockFinished) {
@@ -3247,7 +3292,21 @@ function openFaceScanOverlay(mode) {
           const result = findBestFaceMatch(desc);
           const frameEl = document.querySelector('.face-scan-frame');
           if (result && result.matched) {
-            faceMatchStreak++; faceFailStreak = 0;
+            faceFailStreak = 0;
+            if (yawRatio <= YAW_LEFT_THRESHOLD) seenLeftProfile = true;
+            if (yawRatio >= YAW_RIGHT_THRESHOLD) seenRightProfile = true;
+            if (!seenLeftProfile || !seenRightProfile) {
+              faceMatchStreak = 0;
+              if (frameEl) frameEl.classList.remove('ok', 'deny');
+              if (status) {
+                status.className = 'face-scan-status warn';
+                if (seenLeftProfile && !seenRightProfile) status.textContent = `Perfil izquierdo listo (${escapeHtml(result.profile.name)}) · gira levemente al perfil derecho`;
+                else if (!seenLeftProfile && seenRightProfile) status.textContent = `Perfil derecho listo (${escapeHtml(result.profile.name)}) · gira levemente al perfil izquierdo`;
+                else status.textContent = `Rostro detectado (${escapeHtml(result.profile.name)}) · gira levemente a perfil izq. y der.`;
+              }
+              return;
+            }
+            faceMatchStreak++;
             if (status) {
               status.className = 'face-scan-status ok';
               status.innerHTML = `<i class="fas fa-check-circle"></i> Rostro reconocido: <strong>${escapeHtml(result.profile.name)}</strong>`;
